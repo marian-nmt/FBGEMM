@@ -90,14 +90,18 @@ endif()
 set(FBGEMM_AVX2_SRCS
   src/FbgemmFP16UKernelsAvx2.cc
   src/FbgemmI8Depthwise3DAvx2.cc
+  src/FbgemmI8Depthwise3x3Avx2.cc
   src/FbgemmI8DepthwiseAvx2.cc
+  src/FbgemmI8DepthwisePerChannelQuantAvx2.cc
   src/OptimizedKernelsAvx2.cc
   src/PackDepthwiseConvMatrixAvx2.cc
   src/QuantUtilsAvx2.cc
   src/UtilsAvx2.cc)
 
 #All the source files that use avx512 instructions statically
-set(FBGEMM_AVX512_SRCS src/UtilsAvx512.cc)
+set(FBGEMM_AVX512_SRCS
+  src/FbgemmFP16UKernelsAvx512.cc
+  src/UtilsAvx512.cc)
 
 set(FBGEMM_PUBLIC_HEADERS include/fbgemm/Fbgemm.h
                           include/fbgemm/FbgemmBuild.h

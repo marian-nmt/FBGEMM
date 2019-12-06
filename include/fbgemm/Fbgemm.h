@@ -613,14 +613,6 @@ class FBGEMM_API PackWeightsForConv {
     return W_dw_packed_;
   }
 
-  std::shared_ptr<PackedDepthWiseConvMatrix> getPackedWFor2DDW() {
-    return W_dw_packed_;
-  }
-
-  std::shared_ptr<PackedDepthWiseConvMatrix> getPackedWFor3DDW() {
-    return W_dw_packed_;
-  }
-
   std::shared_ptr<PackWeightMatrixForGConv<T, accT, SPATIAL_DIM>>
   getPackedWForGroupwise() {
     return W_gconv_packed_;
@@ -1394,6 +1386,8 @@ FBGEMM_API void fbgemmPacked(
 
 /**
  * @brief Perform small-channels-per-group groupwise convolution
+ *        Note: Currently threading is not supported. This function does
+ *              nothing for thread_ids > 0, i.e., returns early.
  *
  * @params rowOffsetBuf nullptr if B uses symmetric quantization
  */
@@ -1417,6 +1411,8 @@ FBGEMM_API void fbgemmGroupwiseConv(
 
 /**
  * @params rowOffsetBuf nullptr if B uses symmetric quantization
+ *        Note: Currently threading is not supported. This function does
+ *              nothing for thread_ids > 0, i.e., returns early.
  */
 template <
     typename packed_W,

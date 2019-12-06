@@ -24,7 +24,7 @@ using namespace fbgemm;
 static vector<conv_param_t<>> GetShapes_() {
   vector<conv_param_t<>> shapes = {
       // MB, IC, OC, {IH, IW}, G, {KH, KW}, {stride_h, stride_w}, {pad_t, pad_l,
-      // pad_b, pad_r}
+      // pad_b, pad_r}, {dilation_h, dilation_w}
       // Regular
       conv_param_t<>(1, 16, 16, {10, 30}, 1, {3, 3}, {1, 1}, {1, 1, 1, 1}),
       conv_param_t<>(1, 32, 32, {10, 30}, 1, {3, 3}, {1, 1}, {1, 1, 1, 1}),
@@ -63,6 +63,7 @@ static vector<conv_param_t<>> GetShapes_() {
       conv_param_t<>(1, 32, 32, {10, 30}, 32, {3, 3}, {1, 2}, {1, 1, 1, 1}),
       conv_param_t<>(1, 32, 32, {10, 30}, 32, {3, 5}, {1, 1}, {1, 1, 1, 1}),
       conv_param_t<>(1, 32, 32, {10, 30}, 32, {5, 3}, {1, 1}, {1, 1, 1, 1}),
+      conv_param_t<>(1, 32, 32, {10, 30}, 32, {5, 5}, {1, 1}, {1, 1, 1, 1}),
       conv_param_t<>(1, 32, 32, {10, 30}, 32, {5, 3}, {1, 1}, {1, 1, 1, 1}, {2, 2}),
       // Pointwise
       conv_param_t<>(1, 32, 32, {10, 30}, 1, {1, 1}, {1, 1}, {0, 0, 0, 0}),
@@ -100,10 +101,10 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::ValuesIn({16, 32}), // IC
         ::testing::ValuesIn({16, 32}), // OC
         ::testing::ValuesIn({17}), // IT
-        ::testing::ValuesIn({10, 30, 55}), // IH
+        ::testing::ValuesIn({10, 30}), // IH
         ::testing::ValuesIn({10, 30, 55}), // IW
         ::testing::ValuesIn({1, 4, 16}), // G
-        ::testing::ValuesIn({1, 3, 7}), // kernel
+        ::testing::ValuesIn({1, 3, 5, 7}), // kernel
         ::testing::ValuesIn({1, 2}), // stride
         ::testing::ValuesIn({0, 1, 2}))); // pad
 
