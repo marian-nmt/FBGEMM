@@ -4,7 +4,7 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
-#include "BenchUtils.h"
+#include "./BenchUtils.h"
 
 #include <algorithm>
 #include <random>
@@ -57,6 +57,29 @@ randFill<uint8_t>(aligned_vector<uint8_t>& vec, uint8_t low, uint8_t high);
 template void
 randFill<int8_t>(aligned_vector<int8_t>& vec, int8_t low, int8_t high);
 template void randFill<int>(aligned_vector<int>& vec, int low, int high);
+template void
+randFill<int64_t>(aligned_vector<int64_t>& vec, int64_t low, int64_t high);
+
+aligned_vector<float> getRandomSparseVector(
+    unsigned size,
+    float fractionNonZeros /*= 1.0*/) {
+  aligned_vector<float> res(size);
+
+  std::random_device rd;
+  std::mt19937 gen(345);
+
+  std::uniform_real_distribution<float> dis(0.0, 1.0);
+
+  for (auto& f : res) {
+    if (dis(gen) <= fractionNonZeros) {
+      f = dis(gen);
+    } else {
+      f = 0;
+    }
+  }
+
+  return res;
+}
 
 void llc_flush(std::vector<char>& llc) {
   volatile char* data = llc.data();

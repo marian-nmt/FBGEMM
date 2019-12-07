@@ -16,8 +16,8 @@
 
 #include <gtest/gtest.h>
 
-#include "QuantizationHelpers.h"
-#include "TestUtils.h"
+#include "./QuantizationHelpers.h"
+#include "./TestUtils.h"
 #include "bench/BenchUtils.h"
 #include "fbgemm/Fbgemm.h"
 #include "src/RefImplementations.h"
@@ -62,32 +62,34 @@ INSTANTIATE_TEST_CASE_P(
  */
 static vector<vector<int>> GetShapes_() {
   // NMT
+  // clang-format off
   vector<vector<int>> shapes = {
-      // {M,    N,    K}
-      {1, 128, 512},
-      {1, 1024, 256},
-      {1, 2048, 512},
-      {1, 2048, 513},
-      {1, 2048, 514},
+    // {M,    N,    K}
+    {1, 128, 512},
+    {1, 1024, 256},
+    {1, 2048, 512},
+    {1, 2048, 513},
+    {1, 2048, 514},
 
-      {6, 512, 512},
-      {6, 2048, 512},
-      {6, 256, 1024},
-      {6, 1024, 256},
-      {6, 2048, 256},
-      {6, 2048, 257},
-      {6, 2048, 258},
+    {6, 512, 512},
+    {6, 2048, 512},
+    {6, 256, 1024},
+    {6, 1024, 256},
+    {6, 2048, 256},
+    {6, 2048, 257},
+    {6, 2048, 258},
 
-      {102, 1024, 512},
-      {102, 2323, 256},
-      {102, 512, 256},
-      {102, 512, 257},
-      {102, 512, 258},
+    {102, 1024, 512},
+    {102, 2323, 256},
+    {102, 512, 256},
+    {102, 512, 257},
+    {102, 512, 258},
 
-      {1024, 512, 258},
+    {1024, 512, 258},
 
-      {120, 4, 288},
+    {120, 4, 288},
   };
+  // clang-format on
   return shapes;
 }
 
@@ -467,16 +469,20 @@ TEST_P(fbgemmu8s8acc32WithQuantGranularityTest, TestFloatInputOutput) {
       }
 
       for (int g = 0; g < groups; ++g) {
-        matmul_fp_ref(
+        cblas_sgemm_ref(
+            matrix_op_t::NoTranspose,
+            matrix_op_t::NoTranspose,
             m,
             n_adjusted,
             k_per_group,
-            k,
-            n,
-            groups * n,
+            1.0f,
             Afp32.data() + g * k_per_group,
+            k,
             Bfp32.data() + g * k_per_group * n,
-            Cfp32_ref.data() + g * n_adjusted);
+            n,
+            0.0f,
+            Cfp32_ref.data() + g * n_adjusted,
+            groups * n);
       }
 
       if (atrans == matrix_op_t::Transpose) {
@@ -684,16 +690,20 @@ TEST_P(fbgemmu8s8acc32Test, TestSymmetricQuantizedInputOutput) {
       }
 
       for (int g = 0; g < groups; ++g) {
-        matmul_fp_ref(
+        cblas_sgemm_ref(
+            matrix_op_t::NoTranspose,
+            matrix_op_t::NoTranspose,
             m,
             n_adjusted,
             k_per_group,
-            k,
-            n,
-            groups * n,
+            1.0f,
             Afp32.data() + g * k_per_group,
+            k,
             Bfp32.data() + g * k_per_group * n,
-            Cfp32_ref.data() + g * n_adjusted);
+            n,
+            0.0f,
+            Cfp32_ref.data() + g * n_adjusted,
+            groups * n);
       }
 
       // B zero point defaults to 0
@@ -816,10 +826,10 @@ TEST_P(fbgemmPackUnpackAcc32Test, TestPackUnpack) {
         for (int i = 0; i < k; i++) {
           for (int j = 0; j < n_adjusted; j++) {
             EXPECT_EQ(Bint8.data()[i * n + j], unpack_buf.data()[i * n + j])
-              << "Pack/Unpack results differ at index (" << i << ", " << j
-              << ", Reference: " << static_cast<int>(Bint8.data()[i * n + j])
-              << ", Pack-Unpacked: "
-              << static_cast<int>(unpack_buf.data()[i * n + j]);
+                << "Pack/Unpack results differ at index (" << i << ", " << j
+                << ", Reference: " << static_cast<int>(Bint8.data()[i * n + j])
+                << ", Pack-Unpacked: "
+                << static_cast<int>(unpack_buf.data()[i * n + j]);
           }
         }
       }

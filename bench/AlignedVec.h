@@ -108,7 +108,7 @@ class aligned_allocator {
 
     // Allocators should throw std::bad_alloc in the case of memory allocation
     // failure.
-    if (pv == nullptr) {
+    if (ret || pv == nullptr) {
       throw std::bad_alloc();
     }
 

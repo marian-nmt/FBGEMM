@@ -14,13 +14,13 @@
 #include <limits>
 #include <memory>
 #include <type_traits>
-#include "ConvUtils.h"
-#include "FbgemmBuild.h"
-#include "FbgemmI8Spmdm.h"
-#include "QuantUtilsAvx2.h"
-#include "FbgemmI8DepthwiseAvx2.h"
-#include "Types.h"
-#include "Utils.h"
+#include "./ConvUtils.h"
+#include "./FbgemmBuild.h"
+#include "./FbgemmI8Spmdm.h"
+#include "./QuantUtilsAvx2.h"
+#include "./FbgemmI8DepthwiseAvx2.h"
+#include "./Types.h"
+#include "./Utils.h"
 
 // Turning on this option will print out time breakdown of each stage (e.g.,
 // input packing, the main GEMM kernel, each output processing pipeline).
@@ -57,7 +57,7 @@ template <
 struct PackingTraits;
 
 // type specialized implementation in an include file
-#include "PackingTraits-inl.h"
+#include "./PackingTraits-inl.h"
 
 /**
  * @brief Base class for packing matrices for higher GEMM performance.
@@ -396,14 +396,14 @@ class FBGEMM_API PackBMatrix final
   PackBMatrix() = delete; // no default constructor
 
   /**
-   * @params groups if > 1 and trans == NoTranspose, smat is nRow x nCol with
-   *                groups are vertically concatenated: each group is
-   *                (nRow / groups) x nCol .
-   *                if > 1 and trans == Transpose, smat is (nCol * groups) x
-   *                (nRow / groups) with groups are horizontally concatenated:
-   *                each group is nCol x (nRow / groups) . Each group is
-   *                transposed and vertically concatenated to match with the
-   *                NoTranspose case.
+   * @param groups if > 1 and trans == NoTranspose, smat is nRow x nCol with
+   *               groups are vertically concatenated: each group is
+   *               (nRow / groups) x nCol .
+   *               if > 1 and trans == Transpose, smat is (nCol * groups) x
+   *               (nRow / groups) with groups are horizontally concatenated:
+   *               each group is nCol x (nRow / groups) . Each group is
+   *               transposed and vertically concatenated to match with the
+   *               NoTranspose case.
    */
   PackBMatrix(
       matrix_op_t trans,
@@ -467,8 +467,9 @@ class FBGEMM_API PackBMatrix final
   /**
    * @brief Print the packed block.
    */
-  void printPackedMatrix(std::string name,
-                         const BlockingFactors* params = nullptr);
+  void printPackedMatrix(
+      std::string name,
+      const BlockingFactors* params = nullptr);
 
   /**
    * @return true if meta information like matrix shape is the same.
@@ -519,14 +520,20 @@ class FBGEMM_API PackWeightMatrixForGConv {
   PackWeightMatrixForGConv() = delete; // no default constructor
 
   /**
-   * @params pmat if nullptr, a buffer is allocated and owned by this class.
-   *
+   * @param pmat if nullptr, a buffer is allocated and owned by this class.
    */
   PackWeightMatrixForGConv(
       matrix_op_t trans,
       const conv_param_t<SPATIAL_DIM>& conv_param,
       const inpType* sdata,
       inpType* pdata = nullptr);
+
+  /**
+   * Number of groups we work at a time to fill the full simd width
+   * e.g., IC_PER_G = 4 and OC_PER_G = 4, we work on two groups at a time
+   * to fill the avx2 width of 256 bits.
+   */
+  static int numOfGroupsTogether(const conv_param_t<SPATIAL_DIM>& conv_param);
 
   /**
    * @brief Packs a block of source matrix into pmat buffer.
@@ -561,6 +568,8 @@ class FBGEMM_API PackWeightMatrixForGConv {
   const T* sdata_;
   T* pdata_;
   bool bufAllocatedHere_;
+  // Number of groups we work at a time to fill the full simd width
+  int GTogether_;
 
   /**
    * @brief Internal function performing both pack & unpack
@@ -570,13 +579,12 @@ class FBGEMM_API PackWeightMatrixForGConv {
   /**
    * @brief Get the index of the unpacked data
    */
-  int unpacked_index_(int r, int s, int k, int g, int c, bool tr);
+  int unpacked_index_(int t, int r, int s, int k, int g, int c, bool tr);
 
   /**
    * @brief Get the index of the packed data
    */
-  int packed_index_(int r, int s, int k, int g, int c);
-
+  int packed_index_(int t, int r, int s, int k, int g, int c);
 };
 
 /**
@@ -610,14 +618,6 @@ class FBGEMM_API PackWeightsForConv {
   }
 
   std::shared_ptr<PackedDepthWiseConvMatrix> getPackedWForDepthwise() {
-    return W_dw_packed_;
-  }
-
-  std::shared_ptr<PackedDepthWiseConvMatrix> getPackedWFor2DDW() {
-    return W_dw_packed_;
-  }
-
-  std::shared_ptr<PackedDepthWiseConvMatrix> getPackedWFor3DDW() {
     return W_dw_packed_;
   }
 
@@ -695,11 +695,11 @@ class FBGEMM_API PackAWithIm2Col
   PackAWithIm2Col() = delete; // no default constructor
   /**
    * @param zero_pt the quantized value that maps to 0.0f floating-point number.
-   * @params row_offset If nullptr, this constructor internally allocates a
-   *                    buffer and owns it. Otherwise, this class doesn't own
-   *                    the buffer. The buffer will be populated when pack
-   *                    function is called.
-   * @params b_symmetric if true we skip row offset computation
+   * @param row_offset If nullptr, this constructor internally allocates a
+   *                   buffer and owns it. Otherwise, this class doesn't own
+   *                   the buffer. The buffer will be populated when pack
+   *                   function is called.
+   * @param b_symmetric if true we skip row offset computation
    */
   PackAWithIm2Col(
       const conv_param_t<SPATIAL_DIM>& conv_param,
@@ -745,8 +745,7 @@ class FBGEMM_API PackAWithIm2Col
   /**
    * @return Size of row offset buffer in number of elements
    */
-  static int rowOffsetBufferSize(
-      const BlockingFactors* params = nullptr);
+  static int rowOffsetBufferSize(const BlockingFactors* params = nullptr);
 
   ~PackAWithIm2Col() {
     if (rowOffsetAllocatedHere) {
@@ -783,10 +782,10 @@ class FBGEMM_API PackAWithRowOffset final
 
   PackAWithRowOffset() = delete; // no default constructor
   /**
-   * @params row_offset If nullptr, this constructor internally allocates a
-   *                    buffer and owns it. Otherwise, this class doesn't own
-   *                    the buffer. The buffer will be populated when pack
-   *                    function is called.
+   * @param row_offset If nullptr, this constructor internally allocates a
+   *                   buffer and owns it. Otherwise, this class doesn't own
+   *                   the buffer. The buffer will be populated when pack
+   *                   function is called.
    */
   PackAWithRowOffset(
       matrix_op_t trans,
@@ -840,8 +839,7 @@ class FBGEMM_API PackAWithRowOffset final
   /**
    * @return size of row offset buffer in number of elements
    */
-  static int rowOffsetBufferSize(
-      const BlockingFactors* params = nullptr);
+  static int rowOffsetBufferSize(const BlockingFactors* params = nullptr);
 
   ~PackAWithRowOffset() {
     if (rowOffsetAllocatedHere) {
@@ -878,10 +876,10 @@ class FBGEMM_API PackAWithQuantRowOffset final
 
   PackAWithQuantRowOffset() = delete; // no default constructor
   /**
-   * @params row_offset If nullptr, this constructor internally allocates a
-   *                    buffer and owns it. Otherwise, this class doesn't own
-   *                    the buffer. The buffer will be populated when pack
-   *                    function is called.
+   * @param row_offset If nullptr, this constructor internally allocates a
+   *                   buffer and owns it. Otherwise, this class doesn't own
+   *                   the buffer. The buffer will be populated when pack
+   *                   function is called.
    */
   PackAWithQuantRowOffset(
       matrix_op_t trans,
@@ -937,8 +935,7 @@ class FBGEMM_API PackAWithQuantRowOffset final
   /**
    * @return Size of row offset buffer in number of elements
    */
-  static int rowOffsetBufferSize(
-      const BlockingFactors* params = nullptr);
+  static int rowOffsetBufferSize(const BlockingFactors* params = nullptr);
 
   ~PackAWithQuantRowOffset() {
     if (rowOffsetAllocatedHere) {
@@ -1175,25 +1172,25 @@ class FBGEMM_API ReQuantizeOutput {
   using outType = outT;
   using inpType = inT;
   /**
-   * @params C_multiplier The length of this array is
-   *                      1 when Q_GRAN == QuantizationGranularity::TENSOR,
-   *                      groups when Q_GRAN == QuantizationGranularity::GROUP,
-   *                      nCol if Q_GRAN == QuantizationGranularity::OUT_CHANNEL
-   * @params Bq_zero_point The length of this array should be the same as
-   *                       C_multiplier.
-   * @params row_offsets Typically, this should've been computed by a
-   *                     PackAMatrix and should be obtained by
-   *                     PackMatrix::getRowOffsetBuffer().
-   *                     If Bq_zero_point == 0 (symmetric quantization of B
-   *                     matrix), we can pass nullptr.
-   * @params col_offsets This should be pre-computed for example using
-   *                     col_offsets_with_zero_pt_s8acc32_ref.
-   *                     The length should be nCol.
-   *                     See PackedRequantizeTest.cc for an example.
-   *                     TODO: if Aq_zero_point == 0, allow passing nullptr.
-   * @params bias can be nullptr otherwise the length should be nCol
-   * @params act_times_w_scale activation_scale * weight_scale. This is only
-   *                           used if bias is unquantized (i.e., float).
+   * @param C_multiplier The length of this array is
+   *                     1 when Q_GRAN == QuantizationGranularity::TENSOR,
+   *                     groups when Q_GRAN == QuantizationGranularity::GROUP,
+   *                     nCol if Q_GRAN == QuantizationGranularity::OUT_CHANNEL
+   * @param Bq_zero_point The length of this array should be the same as
+   *                      C_multiplier.
+   * @param row_offsets Typically, this should've been computed by a
+   *                    PackAMatrix and should be obtained by
+   *                    PackMatrix::getRowOffsetBuffer().
+   *                    If Bq_zero_point == 0 (symmetric quantization of B
+   *                    matrix), we can pass nullptr.
+   * @param col_offsets This should be pre-computed for example using
+   *                    col_offsets_with_zero_pt_s8acc32_ref.
+   *                    The length should be nCol.
+   *                    See PackedRequantizeTest.cc for an example.
+   *                    TODO: if Aq_zero_point == 0, allow passing nullptr.
+   * @param bias can be nullptr otherwise the length should be nCol
+   * @param act_times_w_scale activation_scale * weight_scale. This is only
+   *                          used if bias is unquantized (i.e., float).
    */
   ReQuantizeOutput(
       nextOPType& nextop,
@@ -1288,23 +1285,23 @@ class FBGEMM_API ReQuantizeForFloat {
   using outType = outT;
   using inpType = inT;
   /**
-   * @params Bq_scale The length of this array is
-   *                  1 when Q_GRAN == QuantizationGranularity::TENSOR,
-   *                  groups when Q_GRAN == QuantizationGranularity::GROUP,
-   *                  nCol if Q_GRAN == QuantizationGranularity::OUT_CHANNEL
-   * @params Bq_zero_point The length of this array should be the same as
-   *                       Bq_scale.
-   * @params row_offsets Typically, this should've been computed by a
-   *                     PackAMatrix and should be obtained by
-   *                     PackMatrix::getRowOffsetBuffer().
-   *                     If Bq_zero_point == 0 (symmetric quantization of B
-   *                     matrix), we can pass nullptr.
-   * @params col_offsets This should be pre-computed for example using
-   *                     col_offsets_with_zero_pt_s8acc32_ref.
-   *                     The length should be nCol.
-   *                     See PackedRequantizeTest.cc for an example.
-   *                     TODO: if Aq_zero_point == 0, allow passing nullptr.
-   * @params bias can be nullptr otherwise the length should be nCol
+   * @param Bq_scale The length of this array is
+   *                 1 when Q_GRAN == QuantizationGranularity::TENSOR,
+   *                 groups when Q_GRAN == QuantizationGranularity::GROUP,
+   *                 nCol if Q_GRAN == QuantizationGranularity::OUT_CHANNEL
+   * @param Bq_zero_point The length of this array should be the same as
+   *                      Bq_scale.
+   * @param row_offsets Typically, this should've been computed by a
+   *                    PackAMatrix and should be obtained by
+   *                    PackMatrix::getRowOffsetBuffer().
+   *                    If Bq_zero_point == 0 (symmetric quantization of B
+   *                    matrix), we can pass nullptr.
+   * @param col_offsets This should be pre-computed for example using
+   *                    col_offsets_with_zero_pt_s8acc32_ref.
+   *                    The length should be nCol.
+   *                    See PackedRequantizeTest.cc for an example.
+   *                    TODO: if Aq_zero_point == 0, allow passing nullptr.
+   * @param bias can be nullptr otherwise the length should be nCol
    */
   ReQuantizeForFloat(
       nextOPType& nextop,
@@ -1350,7 +1347,7 @@ class FBGEMM_API ReQuantizeForFloat {
 };
 
 // type specialized implementation in an include file
-#include "OutputProcessing-inl.h"
+#include "./OutputProcessing-inl.h"
 
 /*
  *
@@ -1394,8 +1391,10 @@ FBGEMM_API void fbgemmPacked(
 
 /**
  * @brief Perform small-channels-per-group groupwise convolution
+ *        Note: Currently threading is not supported. This function does
+ *              nothing for thread_ids > 0, i.e., returns early.
  *
- * @params rowOffsetBuf nullptr if B uses symmetric quantization
+ * @param rowOffsetBuf nullptr if B uses symmetric quantization
  */
 
 template <
@@ -1416,7 +1415,9 @@ FBGEMM_API void fbgemmGroupwiseConv(
     int num_threads);
 
 /**
- * @params rowOffsetBuf nullptr if B uses symmetric quantization
+ * @param rowOffsetBuf nullptr if B uses symmetric quantization
+ *        Note: Currently threading is not supported. This function does
+ *              nothing for thread_ids > 0, i.e., returns early.
  */
 template <
     typename packed_W,
@@ -1481,81 +1482,9 @@ template <int SPATIAL_DIM>
 FBGEMM_API bool takePointWiseFastPath(const conv_param_t<SPATIAL_DIM>& conv_p);
 
 /**
- * @brief Allocate __size bytes of uninitialized storage whose alignment is
- * specified by __align.
- */
-static void* fbgemmAlignedAlloc(size_t __align, size_t __size) {
-  void* aligned_mem;
-#ifdef _MSC_VER
-  aligned_mem = _aligned_malloc(__size, __align);
-#else
-  if (posix_memalign(&aligned_mem, __align, __size))
-    return 0;
-#endif
-  return aligned_mem;
-}
-
-/**
  * @brief Are we running on a fbgemm supported cpu?
  */
 FBGEMM_API bool fbgemmSupportedCPU();
-
-/*
- * @brief Partition the workload between 0 and m into num_threads segments. Each
- * thread gets a multiple of mr, except that the last one might receive the
- * fringe case. Return the start and end index of each thread.
- * Example: mr = 8
- *    m  mRegBlocks  mRegRemainder  num_thread_left _right  th0  th1  th2
- *  120          15              0                0      3   40   40   40
- *  123          15              3                0      3   40   40   43
- *  133          16              5                1      2   48   40   45
- *  140          17              4                2      1   48   48   44
- *  146          18              2                0      3   48   48   50
- *  144          18              0                0      3   48   48   48
- *
- * ToDo: Make this routine more general: partition the workload between any
- * intervals. We can then reuse this routine for the nested parallel workload
- * distribution.
- */
-static void fbgemmGetRange(
-    int num_threads,
-    int thread_id,
-    int m,
-    int mr,
-    int& start,
-    int& end) {
-  int mRegBlocks = m / mr;
-  int mRegRemainder = m % mr;
-
-  int m_blk_per_thread = mRegBlocks / num_threads;
-
-  int num_thread_left = mRegBlocks % num_threads;
-  // int num_thread_right = num_threads - num_thread_left;
-
-  int m_blk_left, m_blk_right;
-  if (num_thread_left == 0) {
-    m_blk_left = m_blk_per_thread;
-    m_blk_right = m_blk_per_thread;
-  } else {
-    m_blk_left = m_blk_per_thread + 1;
-    m_blk_right = m_blk_per_thread;
-  }
-
-  int size_left = m_blk_left * mr;
-  int size_right = m_blk_right * mr;
-
-  if (thread_id < num_thread_left) {
-    start = 0 + thread_id * size_left;
-    end = 0 + (thread_id + 1) * size_left;
-  } else { // thread_id >= num_thread_left
-    start = num_thread_left * size_left +
-        (thread_id - num_thread_left) * size_right;
-    end = num_thread_left * size_left +
-        (thread_id - num_thread_left + 1) * size_right;
-    if (thread_id == num_threads - 1)
-      end += mRegRemainder;
-  }
-}
 
 /**
  * @brief Performs convolution using fastest path available.
@@ -1589,5 +1518,20 @@ FBGEMM_API int fbgemmConv(
 template <int SPATIAL_DIM = 2, typename ACC_T = std::int32_t>
 FBGEMM_API optimized_conv_t
 ConvFastPath(const conv_param_t<SPATIAL_DIM>& conv_p);
+
+template <typename IndexType = std::int64_t >
+FBGEMM_API bool Fused8BitRowwiseEmbeddingLookup(
+    const std::int64_t block_size,
+    const std::int64_t output_size,
+    const std::int64_t index_size,
+    const std::int64_t data_size,
+    const std::uint8_t* input,
+    const IndexType* indices,
+    const int* lengths,
+    const float* weights, // optional, can be null for non-weighted sum
+    bool normalize_by_lengths,
+    float* out,
+    int prefetch = 16, // prefetch distance -- 0 for no prefetch
+    bool IS_WEIGHT_POSITIONAL = false);
 
 } // namespace fbgemm

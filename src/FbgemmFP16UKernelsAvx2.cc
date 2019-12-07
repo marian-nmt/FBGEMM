@@ -9,7 +9,7 @@
 
 namespace fbgemm {
 
-void NOINLINE_ATTR gemmkernel_1x2_AVX2_fA0fB0fC0(GemmParams* gp) {
+void NOINLINE_ATTR gemmkernel_1x2_Avx2_fA0fB0fC0(GemmParams* gp) {
       char* r14 = (char*)gp;      //"mov r14, %[gp]\t\n"
 
       // Copy parameters
@@ -77,7 +77,7 @@ void NOINLINE_ATTR gemmkernel_1x2_AVX2_fA0fB0fC0(GemmParams* gp) {
       }      //"inc rbx; cmp rbx, rdi; jl loop_outter%=\t\n"
 }
 
-void NOINLINE_ATTR gemmkernel_2x2_AVX2_fA0fB0fC0(GemmParams* gp) {
+void NOINLINE_ATTR gemmkernel_2x2_Avx2_fA0fB0fC0(GemmParams* gp) {
       char* r14 = (char*)gp;      //"mov r14, %[gp]\t\n"
 
       // Copy parameters
@@ -160,7 +160,7 @@ void NOINLINE_ATTR gemmkernel_2x2_AVX2_fA0fB0fC0(GemmParams* gp) {
       }      //"inc rbx; cmp rbx, rdi; jl loop_outter%=\t\n"
 }
 
-void NOINLINE_ATTR gemmkernel_3x2_AVX2_fA0fB0fC0(GemmParams* gp) {
+void NOINLINE_ATTR gemmkernel_3x2_Avx2_fA0fB0fC0(GemmParams* gp) {
       char* r14 = (char*)gp;      //"mov r14, %[gp]\t\n"
 
       // Copy parameters
@@ -258,7 +258,7 @@ void NOINLINE_ATTR gemmkernel_3x2_AVX2_fA0fB0fC0(GemmParams* gp) {
       }      //"inc rbx; cmp rbx, rdi; jl loop_outter%=\t\n"
 }
 
-void NOINLINE_ATTR gemmkernel_4x2_AVX2_fA0fB0fC0(GemmParams* gp) {
+void NOINLINE_ATTR gemmkernel_4x2_Avx2_fA0fB0fC0(GemmParams* gp) {
       char* r14 = (char*)gp;      //"mov r14, %[gp]\t\n"
 
       // Copy parameters
@@ -371,7 +371,7 @@ void NOINLINE_ATTR gemmkernel_4x2_AVX2_fA0fB0fC0(GemmParams* gp) {
       }      //"inc rbx; cmp rbx, rdi; jl loop_outter%=\t\n"
 }
 
-void NOINLINE_ATTR gemmkernel_5x2_AVX2_fA0fB0fC0(GemmParams* gp) {
+void NOINLINE_ATTR gemmkernel_5x2_Avx2_fA0fB0fC0(GemmParams* gp) {
       char* r14 = (char*)gp;      //"mov r14, %[gp]\t\n"
 
       // Copy parameters
@@ -499,7 +499,7 @@ void NOINLINE_ATTR gemmkernel_5x2_AVX2_fA0fB0fC0(GemmParams* gp) {
       }      //"inc rbx; cmp rbx, rdi; jl loop_outter%=\t\n"
 }
 
-void NOINLINE_ATTR gemmkernel_6x2_AVX2_fA0fB0fC0(GemmParams* gp) {
+void NOINLINE_ATTR gemmkernel_6x2_Avx2_fA0fB0fC0(GemmParams* gp) {
       char* r14 = (char*)gp;      //"mov r14, %[gp]\t\n"
 
       // Copy parameters

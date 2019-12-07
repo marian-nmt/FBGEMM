@@ -4,8 +4,7 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
-#ifndef FBGEMM_UKERNELS
-#define FBGEMM_UKERNELS
+#pragma once
 #include <cstdint>
 #include "fbgemm/Types.h"
 
@@ -29,15 +28,14 @@ struct GemmParams {
   uint64_t b_block_cols;
   uint64_t b_block_size;
 };
-void NOINLINE_ATTR gemmkernel_1x2_AVX2_fA0fB0fC0(GemmParams* gp);
-void NOINLINE_ATTR gemmkernel_2x2_AVX2_fA0fB0fC0(GemmParams* gp);
-void NOINLINE_ATTR gemmkernel_3x2_AVX2_fA0fB0fC0(GemmParams* gp);
-void NOINLINE_ATTR gemmkernel_4x2_AVX2_fA0fB0fC0(GemmParams* gp);
-void NOINLINE_ATTR gemmkernel_5x2_AVX2_fA0fB0fC0(GemmParams* gp);
-void NOINLINE_ATTR gemmkernel_6x2_AVX2_fA0fB0fC0(GemmParams* gp);
+void NOINLINE_ATTR gemmkernel_1x2_Avx2_fA0fB0fC0(GemmParams* gp);
+void NOINLINE_ATTR gemmkernel_2x2_Avx2_fA0fB0fC0(GemmParams* gp);
+void NOINLINE_ATTR gemmkernel_3x2_Avx2_fA0fB0fC0(GemmParams* gp);
+void NOINLINE_ATTR gemmkernel_4x2_Avx2_fA0fB0fC0(GemmParams* gp);
+void NOINLINE_ATTR gemmkernel_5x2_Avx2_fA0fB0fC0(GemmParams* gp);
+void NOINLINE_ATTR gemmkernel_6x2_Avx2_fA0fB0fC0(GemmParams* gp);
 typedef void (*funcptr_fp16)(GemmParams* gp);
 ;
 
 } // namespace fbgemm
 
-#endif

@@ -34,7 +34,11 @@ set(FBGEMM_GENERIC_SRCS src/ExecuteKernel.cc
                 src/Fbgemm.cc
                 src/FbgemmFP16.cc
                 src/FbgemmConv.cc
+                src/FbgemmI64.cc
                 src/FbgemmI8Spmdm.cc
+                src/FbgemmSpConv.cc
+                src/FbgemmSpMM.cc
+                src/Fused8BitRowwiseEmbeddingLookup.cc
                 src/GenerateKernelU8S8S32ACC16.cc
                 src/GenerateKernelU8S8S32ACC16Avx512.cc
                 src/GenerateKernelU8S8S32ACC16Avx512VNNI.cc
@@ -90,18 +94,23 @@ endif()
 set(FBGEMM_AVX2_SRCS
   src/FbgemmFP16UKernelsAvx2.cc
   src/FbgemmI8Depthwise3DAvx2.cc
+  src/FbgemmI8Depthwise3x3Avx2.cc
   src/FbgemmI8DepthwiseAvx2.cc
+  src/FbgemmI8DepthwisePerChannelQuantAvx2.cc
   src/OptimizedKernelsAvx2.cc
   src/PackDepthwiseConvMatrixAvx2.cc
   src/QuantUtilsAvx2.cc
   src/UtilsAvx2.cc)
 
 #All the source files that use avx512 instructions statically
-set(FBGEMM_AVX512_SRCS src/UtilsAvx512.cc)
+set(FBGEMM_AVX512_SRCS
+  src/FbgemmFP16UKernelsAvx512.cc
+  src/UtilsAvx512.cc)
 
 set(FBGEMM_PUBLIC_HEADERS include/fbgemm/Fbgemm.h
                           include/fbgemm/FbgemmBuild.h
                           include/fbgemm/FbgemmFP16.h
+                          include/fbgemm/FbgemmI8DepthwiseAvx2.h
                           include/fbgemm/OutputProcessing-inl.h
                           include/fbgemm/PackingTraits-inl.h
                           include/fbgemm/QuantUtils.h

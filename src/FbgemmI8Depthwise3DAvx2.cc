@@ -9,7 +9,8 @@
 #include <string>
 #include <tuple> // for tie
 
-#include "FbgemmI8DepthwiseAvx2-inl.h"
+#include "./FbgemmI8DepthwiseAvx2-inl.h"
+#include "./MaskAvx2.h"
 
 using namespace std;
 
@@ -37,8 +38,8 @@ static inline ALWAYS_INLINE void inner_prod_3x3x3_packed_(
   __m256i A_zero_point_v = _mm256_set1_epi8(static_cast<uint8_t>(A_zero_point));
   __m256i mask_v = _mm256_setzero_si256();
   if (REMAINDER) {
-    mask_v = _mm256_loadu_si256(
-        reinterpret_cast<const __m256i*>(masks[remainder / 4]));
+    mask_v = _mm256_load_si256(reinterpret_cast<const __m256i*>(
+        internal::avx2_ps_or_epi32_masks[remainder / 4]));
   }
 
   // The code below can be written as a simple R*S loop but the compiler
@@ -1235,97 +1236,6 @@ void depthwise_3x3x3_per_channel_quantization_pad_1(
         thread_id,
         num_threads);
   }
-}
-
-// To be removed
-void depthwise_3x3x3_pad_1(
-    int N,
-    int T,
-    int H,
-    int W,
-    int K,
-    int stride_t,
-    int stride_h,
-    int stride_w,
-    int32_t A_zero_point,
-    const uint8_t* A,
-    int32_t B_zero_point,
-    const PackedDepthWiseConvMatrix& B,
-    float C_multiplier,
-    int32_t C_zero_point,
-    uint8_t* C,
-    const int32_t* col_offsets,
-    const int32_t* bias,
-    bool fuse_relu,
-    int thread_id,
-    int num_threads) {
-  depthwise_3x3x3_pad_1<int32_t>(
-      N,
-      T,
-      H,
-      W,
-      K,
-      stride_t,
-      stride_h,
-      stride_w,
-      A_zero_point,
-      A,
-      B_zero_point,
-      B,
-      C_multiplier,
-      C_zero_point,
-      C,
-      col_offsets,
-      bias,
-      fuse_relu,
-      1.0f, // act_scale * weight_scale
-      thread_id,
-      num_threads);
-}
-
-void depthwise_3x3x3_per_channel_quantization_pad_1(
-    int N,
-    int T,
-    int H,
-    int W,
-    int K,
-    int stride_t,
-    int stride_h,
-    int stride_w,
-    int32_t A_zero_point,
-    const uint8_t* A,
-    const int32_t* B_zero_point,
-    const PackedDepthWiseConvMatrix& B,
-    const float* C_multiplier,
-    int32_t C_zero_point,
-    uint8_t* C,
-    const int32_t* col_offsets,
-    const int32_t* bias,
-    bool fuse_relu,
-    int thread_id,
-    int num_threads) {
-  depthwise_3x3x3_per_channel_quantization_pad_1(
-      N,
-      T,
-      H,
-      W,
-      K,
-      stride_t,
-      stride_h,
-      stride_w,
-      A_zero_point,
-      A,
-      B_zero_point,
-      B,
-      C_multiplier,
-      C_zero_point,
-      C,
-      col_offsets,
-      bias,
-      fuse_relu,
-      nullptr, // act_scale * weight_scale
-      thread_id,
-      num_threads);
 }
 
 template void depthwise_3x3x3_pad_1(

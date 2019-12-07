@@ -12,7 +12,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstring>
-#include "OptimizedKernelsAvx2.h"
+#include "./OptimizedKernelsAvx2.h"
 
 #ifdef FBGEMM_MEASURE_TIME_BREAKDOWN
 double spmdm_initial_time = 0.0;
@@ -59,7 +59,7 @@ void CompressedSparseColumn::SpMDM(
   int K = NumOfRows();
   int N = block.col_size;
 
-  if (K == 0 || N == 0) {
+  if (K == 0 || N == 0 || block.row_size == 0) {
     return;
   }
 

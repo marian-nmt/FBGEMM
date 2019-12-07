@@ -4,7 +4,7 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
-#include "RefImplementations.h"
+#include "./RefImplementations.h"
 
 #include "fbgemm/Types.h"
 
@@ -147,27 +147,6 @@ void matmul_u8i8acc16_ref(
   }
 }
 
-void matmul_fp_ref(
-    int M,
-    int N,
-    int K,
-    int lda,
-    int ldb,
-    int ldc,
-    const float* Afp32,
-    const float* Bfp32,
-    float* Cfp32) {
-  for (int i = 0; i < M; ++i) {
-    for (int j = 0; j < N; ++j) {
-      float sum = 0;
-      for (int k = 0; k < K; ++k) {
-        sum += Afp32[i * lda + k] * Bfp32[k * ldb + j];
-      }
-      Cfp32[i * ldc + j] = sum;
-    }
-  }
-}
-
 void cblas_sgemm_ref(
     const matrix_op_t transa,
     const matrix_op_t transb,
@@ -201,6 +180,60 @@ void cblas_sgemm_ref(
       }
     }
   }
+}
+
+namespace {
+// From https://stackoverflow.com/questions/31652875
+uint64_t umul64wide(uint64_t a, uint64_t b) {
+  uint64_t a_lo = static_cast<uint32_t>(a);
+  uint64_t a_hi = a >> 32;
+  uint64_t b_lo = static_cast<uint32_t>(b);
+  uint64_t b_hi = b >> 32;
+
+  uint64_t p0 = a_lo * b_lo;
+  uint64_t p1 = a_lo * b_hi;
+  uint64_t p2 = a_hi * b_lo;
+
+  return p0 + (p1 << 32) + (p2 << 32);
+}
+} // anonymous namepsace
+
+#ifdef __clang__
+// Expected to have overflows
+__attribute__((no_sanitize("undefined")))
+#endif
+void cblas_gemm_i64_i64acc_ref(
+  matrix_op_t transa,
+    matrix_op_t transb,
+    int M,
+    int N,
+    int K,
+    const int64_t* A,
+    int lda,
+    const int64_t* B,
+    int ldb,
+    bool accumulate,
+    int64_t* C,
+    int ldc) {
+  for (int i = 0; i < M; ++i) {
+    for (int j = 0; j < N; ++j) {
+      int64_t acc;
+      if (accumulate) {
+        acc = C[i * ldc + j];
+      } else {
+        acc = 0;
+      }
+      for (int k = 0; k < K; ++k) {
+        int64_t a =
+            A[transa == matrix_op_t::Transpose ? i + k * lda : i * lda + k];
+        int64_t b =
+            B[transb == matrix_op_t::Transpose ? k + j * ldb : k * ldb + j];
+        int64_t lo = umul64wide(a, b);
+        acc += lo;
+      }
+      C[i * ldc + j] = acc;
+    } // j
+  } // i
 }
 
 void row_offsets_u8acc32_ref(
@@ -480,6 +513,56 @@ void conv_ref(
   } // for each n
 }
 
+void conv_ref(
+    const conv_param_t<2>& conv_p,
+    const float* A,
+    const float* B,
+    float* C) {
+  // filters are assumed to be in G RS C/G x K format
+  int IC = conv_p.IC;
+  int OC = conv_p.OC;
+  int G = conv_p.G;
+  assert(IC % G == 0);
+  assert(OC % G == 0);
+  array<int, 2> IN_DIM = conv_p.IN_DIM;
+  array<int, 2> OUT_DIM = conv_p.OUT_DIM;
+  array<int, 2> K = conv_p.K;
+
+  for (int n = 0; n < conv_p.MB; ++n) {
+    for (int h = 0; h < OUT_DIM[0]; ++h) {
+      for (int w = 0; w < OUT_DIM[1]; ++w) {
+        for (int g = 0; g < G; ++g) {
+          for (int m = 0; m < OC / G; ++m) {
+            float sum = 0.0f;
+            for (int r = 0; r < K[0]; ++r) {
+              int h_in = -conv_p.pad[0] + h * conv_p.stride[0] +
+                  r * conv_p.dilation[0];
+              for (int s = 0; s < K[1]; ++s) {
+                int w_in = -conv_p.pad[1] + w * conv_p.stride[1] +
+                    s * conv_p.dilation[1];
+                for (int c = 0; c < IC / G; ++c) {
+                  float a = h_in < 0 || h_in >= IN_DIM[0] || w_in < 0 ||
+                          w_in >= IN_DIM[1]
+                      ? 0.0f
+                      : A[((n * IN_DIM[0] + h_in) * IN_DIM[1] + w_in) * IC +
+                          g * (IC / G) + c];
+                  float b =
+                      B[(((g * K[0] + r) * K[1] + s) * (IC / G) + c) *
+                            (OC / G) +
+                        m];
+                  sum = std::fma(a, b, sum);
+                } // for each c
+              } // for each s
+            } // for each r
+            C[((n * OUT_DIM[0] + h) * OUT_DIM[1] + w) * OC + g * (OC / G) + m] =
+                sum;
+          } // for each m
+        } // for each group
+      } // for each w
+    } // for each h
+  } // for each n
+}
+
 // 3D Conv
 template <>
 void conv_ref(
@@ -599,6 +682,92 @@ void transposeConvWeights(
     }
   }
 }
+
+template <
+    typename IndexType,
+    typename InType,
+    typename OutType,
+    bool IS_WEIGHT_POSITIONAL>
+bool Fused8BitRowwiseEmbeddingLookup_ref(
+    const int64_t block_size,
+    const int64_t output_size,
+    const int64_t index_size,
+    const int64_t data_size,
+    const InType* input,
+    const IndexType* indices,
+    const int* lengths,
+    const float* weights, // optional, can be null for sum reducer
+    bool normalize_by_lengths,
+    OutType* out) {
+  // block_size is the number of elements and fused_block_size is the size of
+  // an entire row, including scale and bias.
+  const auto scale_bias_offset = 8 / sizeof(InType);
+  const int64_t fused_block_size = block_size + scale_bias_offset;
+  int64_t current = 0;
+  for (int m = 0; m < output_size; ++m) {
+    memset(out, 0, sizeof(OutType) * block_size);
+    if (current + lengths[m] > index_size) {
+      return false;
+    }
+    for (int i = 0; i < lengths[m]; ++i) {
+      int64_t idx = indices[current];
+      if (idx < 0 || idx >= data_size) {
+        return false;
+      }
+
+      const float* scale_bias = reinterpret_cast<const float*>(
+          input + fused_block_size * indices[current] + block_size);
+
+      float weight = 1.0f;
+      if (weights) {
+        weight = weights[IS_WEIGHT_POSITIONAL ? i : current];
+      }
+      const float scale = weight * scale_bias[0];
+      const float bias = weight * scale_bias[1];
+
+      for (int j = 0; j < block_size; ++j) {
+        out[j] = std::fma(
+            scale,
+            input[fused_block_size * indices[current] + j],
+            out[j] + bias);
+      }
+
+      ++current;
+    }
+    if (normalize_by_lengths && lengths[m]) {
+      float scale = 1.f / lengths[m];
+      for (int j = 0; j < block_size; ++j) {
+        out[j] *= scale;
+      }
+    }
+    out += block_size;
+  }
+  return true;
+}
+
+template bool Fused8BitRowwiseEmbeddingLookup_ref(
+    const std::int64_t block_size,
+    const std::int64_t output_size,
+    const std::int64_t index_size,
+    const std::int64_t data_size,
+    const uint8_t* input,
+    const std::int64_t* indices,
+    const int* lengths,
+    const float* weights, // optional, can be null for non-weighted sum
+    bool normalize_by_lengths,
+    float* out);
+
+template bool Fused8BitRowwiseEmbeddingLookup_ref(
+    const std::int64_t block_size,
+    const std::int64_t output_size,
+    const std::int64_t index_size,
+    const std::int64_t data_size,
+    const uint8_t* input,
+    const std::int32_t* indices,
+    const int* lengths,
+    const float* weights, // optional, can be null for non-weighted sum
+    bool normalize_by_lengths,
+    float* out);
 
 template void transposeConvWeights(
     const conv_param_t<2>& conv_p,

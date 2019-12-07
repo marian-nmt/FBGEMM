@@ -16,8 +16,8 @@
 #include <omp.h>
 #endif
 
-#include "AlignedVec.h"
-#include "BenchUtils.h"
+#include "./AlignedVec.h"
+#include "./BenchUtils.h"
 #include "fbgemm/FbgemmI8DepthwiseAvx2.h"
 #include "fbgemm/Utils.h"
 #include "src/RefImplementations.h"
@@ -58,6 +58,12 @@ int main() {
     {   5, 256,   16,  28, 28, 2, },
     {   5, 512,    8,  14, 14, 2, },
 
+    {  32,  24,    4,  56, 56, 1, },
+    {  32,  24,    2,  28, 28, 1, },
+    {  32,  48,    4,  56, 56, 1, },
+    {  32,  48,    2,  28, 28, 1, },
+    {  32,  48,    1,  14, 14, 1, },
+
     {   1,   8,    4,   4,  4, 1, },
   };
   // clang-format on
@@ -67,10 +73,6 @@ int main() {
   std::vector<char> llc;
   if (flush) {
     llc.resize(128 * 1024 * 1024, 1.0);
-  }
-#define llc_flush()                       \
-  for (auto i = 0; i < llc.size(); i++) { \
-    llc[i]++;                             \
   }
 
   constexpr int NWARMUP = 4;
@@ -161,51 +163,43 @@ int main() {
 
     PackedDepthWiseConvMatrix Bp(K, 3 * 3 * 3, B.data());
 
-    double ttot = 0;
-    double bytes = double(NITER) *
+    double bytes =
         (K *
-         (N * (2. * sizeof(int32_t) * T_OUT * H_OUT * W_OUT + T * H * W) +
+         (N * (2.0 * sizeof(int32_t) * T_OUT * H_OUT * W_OUT + T * H * W) +
           K_T * K_H * K_W));
-    double ops =
-        double(NITER) * N * T_OUT * H_OUT * W_OUT * K * K_T * K_H * K_W * 2;
-    chrono::time_point<chrono::system_clock> t_begin, t_end;
+    double ops = 2.0 * N * T_OUT * H_OUT * W_OUT * K * K_T * K_H * K_W;
 
-    for (int i = 0; i < NWARMUP + NITER; ++i) {
-      llc_flush();
-
-      t_begin = chrono::system_clock::now();
-#pragma omp parallel
-      {
-        int num_threads = fbgemm_get_num_threads();
-        int tid = fbgemm_get_thread_num();
-        depthwise_3x3x3_pad_1(
-            N,
-            T,
-            H,
-            W,
-            K,
-            stride_t,
-            stride_h,
-            stride_w,
-            A_zero_point,
-            A.data(),
-            B_zero_point,
-            Bp,
-            C_multiplier[0],
-            C_zero_point,
-            C_uint8.data(),
-            col_offsets.data(),
-            bias.data(),
-            false, /* fuse_relu */
-            tid,
-            num_threads);
-      }
-      t_end = chrono::system_clock::now();
-      if (i >= NWARMUP) {
-        double dt = chrono::duration<double>(t_end - t_begin).count();
-        ttot += dt;
-      }
-    }
+    double ttot = measureWithWarmup(
+        [&]() {
+          int num_threads = fbgemm_get_num_threads();
+          int tid = fbgemm_get_thread_num();
+          depthwise_3x3x3_pad_1(
+              N,
+              T,
+              H,
+              W,
+              K,
+              stride_t,
+              stride_h,
+              stride_w,
+              A_zero_point,
+              A.data(),
+              B_zero_point,
+              Bp,
+              C_multiplier[0],
+              C_zero_point,
+              C_uint8.data(),
+              col_offsets.data(),
+              bias.data(),
+              false, /* fuse_relu */
+              1.0f, /* act_scale * w_scale */
+              tid,
+              num_threads);
+        },
+        NWARMUP,
+        NITER,
+        flush ? &llc : nullptr,
+        true /*useOpenMP*/);
 
     // correctness check
     for (int n = 0; n < N; ++n) {
