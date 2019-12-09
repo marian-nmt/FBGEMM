@@ -84,19 +84,20 @@ void QuantizeAvx2(
         reinterpret_cast<__m128i*>(dst + i), _mm256_castsi256_si128(rounded_v));
     }
 
-  for (; i < len; ++i) {
-    float transformed = qparams.zero_point + src[i] * inverse_scale;
-    float clipped = std::min(std::max(transformed, min_val), max_val);
-    // Not exactly the same behavior as the vectorized code.
-    // The vectorized code above always rounds to even in halfway cases
-    // (https://software.intel.com/en-us/node/523819), but std::nearbyint
-    // does the same only when the current rounding mode is FE_TONEAREST.
-    // However, in practice, this should not be a problem because most cases
-    // use the default rounding mode FE_TONEAREST.
-    // Note that we cannot implement the same behavior as the vectorized code
-    // using std::round because it does rounding away from zero in halfway
-    // cases.
-    dst[i] = nearbyint(clipped);
+    for (; i < len; ++i) {
+      float transformed = qparams.zero_point + src[i] * inverse_scale;
+      float clipped = std::min(std::max(transformed, min_val), max_val);
+      // Not exactly the same behavior as the vectorized code.
+      // The vectorized code above always rounds to even in halfway cases
+      // (https://software.intel.com/en-us/node/523819), but std::nearbyint
+      // does the same only when the current rounding mode is FE_TONEAREST.
+      // However, in practice, this should not be a problem because most cases
+      // use the default rounding mode FE_TONEAREST.
+      // Note that we cannot implement the same behavior as the vectorized code
+      // using std::round because it does rounding away from zero in halfway
+      // cases.
+      dst[i] = nearbyint(clipped);
+    }
   }
 }
 

@@ -564,29 +564,6 @@ void GenConvKernel<SPATIAL_DIM, inst_set_t::avx2>::genForSingleOutput(
   if (this->needRowOffset_) {
     a->vxorps(rowOffsetReg_V_, rowOffsetReg_V_, rowOffsetReg_V_);
   }
-<<<<<<< HEAD
-#endif
-
-  // arguments to the function created
-#ifdef _MSC_VER
-  in_acts_R_ = a->zcx();
-  a_zero_pt_R_ = a->zdx();
-  H_R_ = a->gpz(8);
-  W_R_ = a->gpz(9);
-  row_offset_R_ = a->zdi();
-#else
-  in_acts_R_ = a->zdi();
-  a_zero_pt_R_ = a->zsi();
-  H_R_ = a->zdx();
-  W_R_ = a->zcx();
-  row_offset_R_ = a->gpz(8);
-#endif
-
-  // register for temporary use
-  scratchReg1_ = a->gpz(12);
-  scratchReg2_ = a->gpz(13);
-=======
->>>>>>> upstream
 
   bool isWidthMiddle = !isLeft && !isRight;
   bool isHeightMiddle = !isTop && !isBottom;
