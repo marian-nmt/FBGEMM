@@ -8,12 +8,14 @@ using namespace std;
 using namespace fbgemm;
 
 int main(int, char**) {
-  vector<char> llc(128 * 1024 * 1024);
+  //vector<char> llc(128 * 1024 * 1024);
+  vector<char> llc(1 * 512 * 2048);
 
   // vector<vector<unsigned>> shapes = {{64, 64, 64}};
   // vector<vector<unsigned>> shapes = {{1, 16, 4}};
 
-  vector<vector<unsigned>> shapes = {{1024, 128, 1024}};
+  // vector<vector<unsigned>> shapes = {{1024, 128, 1024}};
+  vector<vector<unsigned>> shapes = {{2048, 1, 512}, {512, 1, 512}, {32000, 1, 512}};
 
   // C is MxN -> CT is NxM
   // A is MxK -> BT is KxM

@@ -7,9 +7,11 @@ using namespace std;
 using namespace fbgemm;
 
 int main(int, char**) {
-  vector<char> llc(128 * 1024 * 1024);
+//  vector<char> llc(128 * 1024 * 1024);
+  vector<char> llc(1 * 512 * 2048);
 
-  vector<vector<int>> shapes = {{1024, 128, 1024}};
+//  vector<vector<int>> shapes = {{1024, 128, 1024}};
+  vector<vector<int>> shapes = {{2048, 1, 512}, {512, 1, 512}, {32000, 1, 512}};
 
   // C is MxN -> CT is NxM
   // A is MxK -> BT is KxM
@@ -38,10 +40,11 @@ int main(int, char**) {
       constexpr int NWARMUP = 5;
       constexpr int NITER = 32;
       auto secs = measureWithWarmup(
-          [&]() { fn(bData.data(), cData.data(), 0); }, NWARMUP, NITER, &llc);
+          [&]() { //fn = generateSpMM<float>(m, n, k, aData.data(), lda, ldb, ldc);
+            fn(bData.data(), cData.data(), 0); }, NWARMUP, NITER, &llc);
 
       auto secs_varying_n = measureWithWarmup(
-          [&]() {
+          [&]() { //fn_varying_n = generateSpMM<float>(m, k, aData.data(), lda);
             fn_varying_n(
                 bData.data(),
                 cData.data(),
