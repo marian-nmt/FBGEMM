@@ -12,7 +12,7 @@
 
 #include <gtest/gtest.h>
 
-#include "TestUtils.h"
+#include "./TestUtils.h"
 #include "bench/BenchUtils.h"
 #include "fbgemm/FbgemmFP16.h"
 #include "src/RefImplementations.h"
@@ -40,9 +40,6 @@ class FBGemmFP16Test
       int n = dnk(generator);
       int k = dnk(generator);
       shapes.push_back({m, n, k});
-      if (m > 10) {
-        shapes.push_back({(m / 10) * 10, n, k});
-      }
     }
     return shapes;
   }
@@ -94,15 +91,21 @@ TEST_P(FBGemmFP16Test, Test) {
 
     aligned_vector<float> A_ref(A), B_ref(B), C_ref(C);
 
-    if (atrans == matrix_op_t::Transpose) {
-      transpose_matrix(A_ref.data(), k, m);
-    }
-    if (btrans == matrix_op_t::Transpose) {
-      transpose_matrix(B_ref.data(), n, k);
-    }
-
     // Gold via reference sgemm
-    matmul_fp_ref(m, n, k, k, n, n, A_ref.data(), B_ref.data(), C_ref.data());
+    cblas_sgemm_ref(
+        atrans,
+        btrans,
+        m,
+        n,
+        k,
+        1.0f,
+        A_ref.data(),
+        atrans == matrix_op_t::Transpose ? m : k,
+        B_ref.data(),
+        btrans == matrix_op_t::Transpose ? k : n,
+        0.0f,
+        C_ref.data(),
+        n);
 
     // fbgemm fp16
     PackedGemmMatrixFP16 Bp(btrans, k, n, alpha, B.data());
@@ -162,15 +165,21 @@ TEST_P(FBGemmFP16Test, Unpack) {
 
     aligned_vector<float> A_ref(A), B_ref(B), C_ref(C);
 
-    if (atrans == matrix_op_t::Transpose) {
-      transpose_matrix(A_ref.data(), k, m);
-    }
-    if (btrans == matrix_op_t::Transpose) {
-      transpose_matrix(B_ref.data(), n, k);
-    }
-
     // Gold via reference sgemm
-    matmul_fp_ref(m, n, k, k, n, n, A_ref.data(), B_ref.data(), C_ref.data());
+    cblas_sgemm_ref(
+        atrans,
+        btrans,
+        m,
+        n,
+        k,
+        1.0f,
+        A_ref.data(),
+        atrans == matrix_op_t::Transpose ? m : k,
+        B_ref.data(),
+        btrans == matrix_op_t::Transpose ? k : n,
+        0.0f,
+        C_ref.data(),
+        n);
 
     // fbgemm fp16
     PackedGemmMatrixFP16 Bp(btrans, k, n, alpha, B.data());

@@ -4,9 +4,8 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
-#include "TestUtils.h"
+#include "./TestUtils.h"
 #include <gtest/gtest.h>
-#include "bench/AlignedVec.h"
 #include "fbgemm/Fbgemm.h"
 
 namespace fbgemm {
@@ -60,6 +59,14 @@ template int compare_validate_buffers<uint8_t>(
     int n,
     int ld,
     uint8_t atol);
+
+template int compare_validate_buffers<int64_t>(
+    const int64_t* ref,
+    const int64_t* test,
+    int m,
+    int n,
+    int ld,
+    int64_t atol);
 
 template <typename T>
 bool check_all_zero_entries(const T* test, int m, int n) {

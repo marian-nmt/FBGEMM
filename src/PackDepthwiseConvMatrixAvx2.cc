@@ -4,30 +4,19 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
+#define FBGEMM_EXPORTS
 #include "fbgemm/FbgemmI8DepthwiseAvx2.h"
 #include "fbgemm/Utils.h"
 #include "fbgemm/Fbgemm.h"
 
 #include <immintrin.h>
 
+#include "./MaskAvx2.h"
+#include "fbgemm/UtilsAvx2.h"
+
 using namespace std;
 
 namespace fbgemm {
-
-// clang-format off
-static int masks[8][8] = {
-  // NOTE: clang-format wants to use a different formatting but the current
-  // formatting should be easier to read.
-  {  0,  0,  0,  0,  0,  0,  0,  0,  },
-  { -1,  0,  0,  0,  0,  0,  0,  0,  },
-  { -1, -1,  0,  0,  0,  0,  0,  0,  },
-  { -1, -1, -1,  0,  0,  0,  0,  0,  },
-  { -1, -1, -1, -1,  0,  0,  0,  0,  },
-  { -1, -1, -1, -1, -1,  0,  0,  0,  },
-  { -1, -1, -1, -1, -1, -1,  0,  0,  },
-  { -1, -1, -1, -1, -1, -1, -1,  0,  },
-};
-// clang-format on
 
 PackedDepthWiseConvMatrix::PackedDepthWiseConvMatrix(
     int K,
@@ -35,9 +24,8 @@ PackedDepthWiseConvMatrix::PackedDepthWiseConvMatrix(
     const int8_t* smat)
     : K_(K), kernel_prod_(kernel_prod) {
   // Transpose the input matrix to make packing faster.
-  int8_t* smat_transposed
-      = static_cast<int8_t*>(ALIGNED_MALLOC(K * kernel_prod * sizeof(int8_t), 64));
-
+  int8_t* smat_transposed = static_cast<int8_t*>(
+      fbgemmAlignedAlloc(64, K * kernel_prod * sizeof(int8_t)));
   for (int i = 0; i < kernel_prod; ++i) {
     for (int j = 0; j < K; ++j) {
       smat_transposed[i * K + j] = smat[i + j * kernel_prod];
@@ -46,7 +34,8 @@ PackedDepthWiseConvMatrix::PackedDepthWiseConvMatrix(
 
   // Allocate packed arrays
   int kernel_prod_aligned = (kernel_prod + 1) / 2 * 2;
-  pmat_ = static_cast<int8_t *>(fbgemmAlignedAlloc(64, ((K + 31) / 32) * kernel_prod_aligned * 32 * sizeof(int8_t)));
+  pmat_ = static_cast<int8_t*>(fbgemmAlignedAlloc(
+      64, ((K + 31) / 32) * kernel_prod_aligned * 32 * sizeof(int8_t)));
 
   // Pack input matrix
   // The layout is optimized to use vpmaddubsw efficiently (see
@@ -104,8 +93,8 @@ PackedDepthWiseConvMatrix::PackedDepthWiseConvMatrix(
     __m256i* b_v = static_cast<__m256i*>(ALIGNED_MALLOC(kernel_prod * sizeof(__m256i), 64));
     int remainder = K - k1;
     if (remainder < 32) {
-      __m256i mask_v = _mm256_loadu_si256(
-          reinterpret_cast<const __m256i*>(masks[remainder / 4]));
+      __m256i mask_v = _mm256_load_si256(reinterpret_cast<const __m256i*>(
+          internal::avx2_ps_or_epi32_masks[remainder / 4]));
       for (int i = 0; i < kernel_prod; ++i) {
         b_v[i] = _mm256_maskload_epi32(
             reinterpret_cast<const int*>(smat_transposed + i * K + k1), mask_v);
@@ -160,7 +149,7 @@ PackedDepthWiseConvMatrix::PackedDepthWiseConvMatrix(
     FREE(b_interleaved_epi16);
     FREE(b_interleaved_epi32);
   }
-  FREE(smat_transposed);
+  fbgemmAlignedFree(smat_transposed);
 }
 
 int PackedDepthWiseConvMatrix::addr(int r, int c) {
@@ -201,11 +190,7 @@ void PackedDepthWiseConvMatrix::unpack(int8_t* unpacked_data) {
 }
 
 PackedDepthWiseConvMatrix::~PackedDepthWiseConvMatrix() {
-#ifdef _MSC_VER
-  _aligned_free(pmat_);
-#else
-  free(pmat_);
-#endif
+  fbgemmAlignedFree(pmat_);
 }
 
 } // namespace fbgemm

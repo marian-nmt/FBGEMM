@@ -12,7 +12,7 @@
 
 namespace fbgemm {
 
-enum class QuantizationGranularity {
+enum class FBGEMM_API QuantizationGranularity {
   TENSOR,
   GROUP,
   OUT_CHANNEL,
@@ -44,7 +44,7 @@ struct block_type_t {
  * QuantUtilsAvx2.h as it combines all the parameters needed for various
  * quantization granularities
  */
-template<typename BIAS_TYPE = std::int32_t>
+template <typename BIAS_TYPE = std::int32_t>
 struct requantizationParams_t {
   using BIAS_T = BIAS_TYPE;
   std::int32_t A_zero_point;
@@ -73,5 +73,17 @@ struct requantizationForFloatParams_t {
   std::uint32_t ncols;
   int groups;
 };
+
+/**
+ * @brief Allocate size bytes of uninitialized storage whose alignment is
+ * specified by align.
+ */
+FBGEMM_API void*
+fbgemmAlignedAlloc(size_t align, size_t size, bool raiseException = false);
+
+/**
+ * @brief Free memory allocated by fbgemmAlignedAlloc
+ */
+FBGEMM_API void fbgemmAlignedFree(void* p);
 
 } // namespace fbgemm

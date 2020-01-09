@@ -9,21 +9,41 @@
 // WARNING: this is a legacy fp16 fbgemm implementation and will soon be
 // upgraded to match with new fbgemm interface.
 
+#include <cpuinfo.h>
 #include <cassert>
 #include <cstdlib>
 #include <memory>
 #include <vector>
 
-#include "Types.h"
-#include "Utils.h"
+#include "./Types.h"
+#include "./Utils.h"
 
 namespace fbgemm {
+
+// forward declaration
+class PackedGemmMatrixFP16;
+
+/**
+ * restrictions: transa == CblasNoTrans
+ */
+FBGEMM_API void cblas_gemm_compute(
+    const matrix_op_t transa,
+    const int m,
+    const float* A,
+    const PackedGemmMatrixFP16& Bp,
+    const float beta,
+    float* C,
+    int thread_id = 0,
+    int num_threads = 1);
 
 /// class that performs packing of matrix in
 /// row-major format into
 /// internal packed blocked-row major format
 class PackedGemmMatrixFP16 {
  public:
+   using value_type = float16;
+   using size_type  = uint64_t;
+
   // takes smat input mamtrix in row-major format;
   // packs it into gemm-friendly blocked format;
   // allocate space and sets up all the internal variables;
@@ -46,12 +66,8 @@ class PackedGemmMatrixFP16 {
       const int ncol,
       const float alpha,
       const float* smat,
-      const int brow = 512,
-      const int kernel_ncol_blocks = 2)
-      : nrow_(nrow),
-        ncol_(ncol),
-        brow_(brow),
-        kernel_ncol_blocks_(kernel_ncol_blocks) {
+      const int brow = 512)
+      : nrow_(nrow), ncol_(ncol), brow_(brow), kernel_ncol_blocks_(2) {
     initializeParam();
     initializeMemory();
     // copy source matrix into packed matrix
@@ -66,8 +82,7 @@ class PackedGemmMatrixFP16 {
       const int bcol,
       const int nbrow,
       const int nbcol,
-      const uint64_t size,
-      const int kernel_ncol_blocks = 2)
+      const uint64_t size)
       : nrow_(nrow),
         ncol_(ncol),
         brow_(brow),
@@ -76,30 +91,31 @@ class PackedGemmMatrixFP16 {
         nbrow_(nbrow),
         nbcol_(nbcol),
         size_(size),
-        kernel_ncol_blocks_(kernel_ncol_blocks) {
+        kernel_ncol_blocks_(2) {
     initializeMemory();
   }
 
   void initializeParam() {
-    bcol_ = 8 * kernelNumColBlocks();
+    if (!cpuinfo_initialize()) {
+      throw std::runtime_error("Failed to initialize cpuinfo!");
+    }
+    bcol_ = (isZmm(fbgemmInstructionSet())
+                 ? simd_info<inst_set_t::avx512>::WIDTH_32BIT_ELEMS
+                 : simd_info<inst_set_t::avx2>::WIDTH_32BIT_ELEMS) *
+        kernelNumColBlocks();
 
     // set up internal packing parameters
-    nbrow_ = ((numRows() % blockRowSize()) == 0)
-        ? (numRows() / blockRowSize())
-        : ((numRows() + blockRowSize()) / blockRowSize());
+    nbrow_ = (numRows() + blockRowSize() - 1) / blockRowSize();
     last_brow_ = ((nrow_ % blockRowSize()) == 0) ? blockRowSize()
                                                  : (nrow_ % blockRowSize());
-    nbcol_ = ((numCols() % blockColSize()) == 0)
-        ? (numCols() / blockColSize())
-        : ((numCols() + blockColSize()) / blockColSize());
+    nbcol_ = (numCols() + blockColSize() - 1) / blockColSize();
 
     if (numCols() != blockColSize() * nbcol_) {
 #ifdef VLOG
       VLOG(0) << "Packer warning: ncol(" << numCols()
               << ") is not a multiple of internal block size ("
               << blockColSize() << ")";
-      VLOG(0)
-          << "lefover is currently done via MKL: hence overhead will inccur";
+      VLOG(0) << "lefover is not super optimized hence overhead will inccur";
 #endif
     }
   }
@@ -116,24 +132,15 @@ class PackedGemmMatrixFP16 {
     // allocate and initialize packed memory
     const int padding = 1024; // required by sw pipelined kernels
     size_ = (blockRowSize() * nbrow_) * (blockColSize() * nbcol_);
-#ifdef _MSC_VER
-    pmat_ = (float16 *)_aligned_malloc(matSize() * sizeof(float16) +
-      padding, 64);
-#else
-    int result = posix_memalign((void**)&pmat_, 64, matSize() * sizeof(float16) + padding);
-    assert(result == 0);
-#endif
+    pmat_ = static_cast<float16*>(
+        fbgemmAlignedAlloc(64, matSize() * sizeof(float16) + padding));
     for (auto i = 0; i < matSize(); i++) {
-      pmat_[i] = tconv(0.f, pmat_[i]);
+      pmat_[i] = cpu_float2half_rn(0.0f);
     }
   }
 
   ~PackedGemmMatrixFP16() {
-#ifdef _MSC_VER
-    _aligned_free(pmat_);
-#else
-    free(pmat_);
-#endif
+    fbgemmAlignedFree(pmat_);
   }
 
   void unpackFromSrc(const matrix_op_t trans, float16* src_mat) {
@@ -144,6 +151,16 @@ class PackedGemmMatrixFP16 {
       }
     }
     packed_ = false;
+  }
+
+  void unpack(float16* origin_buf, const matrix_op_t trans) {
+    assert(packed_);
+    bool tr = (trans == matrix_op_t::Transpose);
+    for (int i = 0; i < numRows(); i++) {
+      for (int j = 0; j < numCols(); j++) {
+        origin_buf[tr ? i + numRows() * j : i * numCols() + j] = pmat_[addr(i, j)];
+      }
+    }
   }
 
   // protected:
@@ -174,11 +191,11 @@ class PackedGemmMatrixFP16 {
     // pack
     for (int i = 0; i < numRows(); i++) {
       for (int j = 0; j < numCols(); j++) {
-        pmat_[addr(i, j)] = tconv(
-            alpha *
-                ((tr == false) ? smat[i * numCols() + j]
-                               : smat[i + numRows() * j]),
-            pmat_[addr(i, j)]);
+        constexpr float FP16_MAX = 65504.f;
+        float src = alpha *
+            ((tr == false) ? smat[i * numCols() + j] : smat[i + numRows() * j]);
+        src = std::max(-FP16_MAX, std::min(src, FP16_MAX));
+        pmat_[addr(i, j)] = cpu_float2half_rn(src);
       }
     }
     packed_ = true;
@@ -235,6 +252,14 @@ class PackedGemmMatrixFP16 {
     return kernel_ncol_blocks_;
   }
 
+  const value_type* data() const {
+    return pmat_;
+  }
+
+  uint64_t size() const {
+    return size_ / sizeof(value_type);
+  }
+
   int nrow_, ncol_;
   int brow_, last_brow_, bcol_;
   int nbrow_, nbcol_;
@@ -253,17 +278,4 @@ class PackedGemmMatrixFP16 {
       int thread_id,
       int num_threads);
 };
-
-/**
- * restrictions: transa == CblasNoTrans
- */
-extern void cblas_gemm_compute(
-    const matrix_op_t transa,
-    const int m,
-    const float* A,
-    const PackedGemmMatrixFP16& Bp,
-    const float beta,
-    float* C,
-    int thread_id = 0,
-    int num_threads = 1);
 }; // namespace fbgemm

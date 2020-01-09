@@ -4,6 +4,7 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
+#define FBGEMM_EXPORTS
 #include <cpuinfo.h>
 #include <cassert>
 #include <iomanip>
@@ -229,10 +230,10 @@ PackBMatrix<T, accT>::PackBMatrix(
   BaseType::packedBlock(block);
   if (!pmat) {
     BaseType::bufAllocatedHere_ = true;
-    BaseType::buf_ = (T*)fbgemmAlignedAlloc(
+    BaseType::buf_ = static_cast<T*>(fbgemmAlignedAlloc(
         64,
         BaseType::numGroups() * BaseType::blockRows() * BaseType::brow_ *
-            BaseType::blockCols() * BaseType::bcol_ * sizeof(T));
+            BaseType::blockCols() * BaseType::bcol_ * sizeof(T)));
   }
   pack(block, params);
 }

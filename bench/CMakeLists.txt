@@ -20,6 +20,12 @@ macro(add_benchmark BENCHNAME)
   endif(MSVC)
   target_link_libraries(${BENCHNAME} fbgemm)
   add_dependencies(${BENCHNAME} fbgemm)
+
+  if(${OpenMP_FOUND})
+    message(STATUS "OpenMP_LIBRARIES= ${OpenMP_CXX_LIBRARIES}")
+    target_link_libraries(${BENCHNAME} "${OpenMP_CXX_LIBRARIES}")
+  endif()
+
   if(${MKL_FOUND})
     message(STATUS "MKL_LIBRARIES= ${MKL_LIBRARIES}")
     target_include_directories(${BENCHNAME} PRIVATE "${MKL_INCLUDE_DIR}")

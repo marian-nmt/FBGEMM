@@ -6,6 +6,7 @@
  */
 #include <chrono>
 #include <cmath>
+#include <memory>
 #include <random>
 
 #ifdef USE_MKL
@@ -13,27 +14,43 @@
 #endif
 
 #ifdef USE_BLAS
+#if __APPLE__
+//not sure whether need to differentiate TARGET_OS_MAC or TARGET_OS_IPHONE, etc.
+#include <Accelerate/Accelerate.h>
+#else
 #include <cblas.h>
+#endif
 #endif
 
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 
-#include "AlignedVec.h"
+#include "./AlignedVec.h"
 #include "bench/BenchUtils.h"
 #include "fbgemm/FbgemmFP16.h"
+#include "src/RefImplementations.h"
 
 using namespace std;
 using namespace fbgemm;
 
-void performance_test() {
-  // cache flush
-  bool flush = true;
-  std::vector<char> llc;
-  if (flush) {
-    llc.resize(64L * 1024L * 1024L, 1.0);
-  }
+#if defined(USE_MKL)
+void test_xerbla(char* srname, const int* info, int) {
+  // srname - name of the function that called xerbla
+  // info - position of the invalid parameter in the parameter list
+  // len - length of the name in bytes
+  printf("\nXERBLA(MKL Error) is called :%s: %d\n", srname, *info);
+}
+#endif
+
+void performance_test(
+    int num_instances,
+    bool flush,
+    int repetitions,
+    bool is_mkl) {
+#if defined(USE_MKL)
+  mkl_set_xerbla((XerblaEntry)test_xerbla);
+#endif
 
   float alpha = 1.f, beta = 1.f;
   matrix_op_t btran = matrix_op_t::Transpose;
@@ -77,30 +94,67 @@ void performance_test() {
     int n = s[1];
     int k = s[2];
 
-    aligned_vector<float> C_ref(m * n, 1.f);
-    aligned_vector<float> C_fb(m * n, NAN);
-
     // initialize with small numbers
     aligned_vector<int> Aint(m * k);
     randFill(Aint, 0, 4);
-    aligned_vector<float> A(Aint.begin(), Aint.end());
+    vector<aligned_vector<float>> A;
+    for (int i = 0; i < num_instances; ++i) {
+      A.push_back(aligned_vector<float>(Aint.begin(), Aint.end()));
+    }
 
     aligned_vector<int> Bint(k * n);
     randFill(Bint, 0, 4);
     aligned_vector<float> B(Bint.begin(), Bint.end());
-    PackedGemmMatrixFP16 Bp(btran, k, n, alpha, B.data());
 
-    if (beta != 0.0f) {
-      aligned_vector<int> Cint(C_ref.size());
-      randFill(Cint, 0, 4);
-      C_ref.assign(Cint.begin(), Cint.end());
-      C_fb = C_ref;
+    vector<unique_ptr<PackedGemmMatrixFP16>> Bp;
+    for (int i = 0; i < num_instances; ++i) {
+      Bp.push_back(unique_ptr<PackedGemmMatrixFP16>(
+          new PackedGemmMatrixFP16(btran, k, n, alpha, B.data())));
     }
 
-    double nflops = 2.0 * (double)m * (double)n * (double)k * (double)NITER;
-    double nbytes = (4.0 * (double)m * (double)k + 2.0 * (double)k * (double)n +
-                     4.0 * (double)m * (double)n) *
-        NITER;
+    auto kAligned = ((k * sizeof(float) + 64) & ~63) / sizeof(float);
+    auto nAligned = ((n * sizeof(float) + 64) & ~63) / sizeof(float);
+    vector<aligned_vector<float>> Bt(num_instances);
+    auto& Bt_ref = Bt[0];
+
+    if (btran == matrix_op_t::Transpose) {
+      Bt_ref.resize(k * nAligned);
+      for (auto row = 0; row < k; ++row) {
+        for (auto col = 0; col < n; ++col) {
+          Bt_ref[row * nAligned + col] = alpha * B[col * k + row];
+        }
+      }
+    } else {
+      Bt_ref.resize(kAligned * n);
+      for (auto row = 0; row < k; ++row) {
+        for (auto col = 0; col < n; ++col) {
+          Bt_ref[col * kAligned + row] = alpha * B[col * k + row];
+        }
+      }
+    }
+
+    for (auto i = 1; i < num_instances; ++i) {
+      Bt[i] = Bt_ref;
+    }
+
+    vector<aligned_vector<float>> C_ref;
+    vector<aligned_vector<float>> C_fb;
+    if (beta != 0.0f) {
+      aligned_vector<int> Cint(m * n);
+      randFill(Cint, 0, 4);
+      for (int i = 0; i < num_instances; ++i) {
+        C_ref.push_back(aligned_vector<float>(Cint.begin(), Cint.end()));
+        C_fb.push_back(aligned_vector<float>(Cint.begin(), Cint.end()));
+      }
+    } else {
+      for (int i = 0; i < num_instances; ++i) {
+        C_ref.push_back(aligned_vector<float>(m * n, 1.f));
+        C_fb.push_back(aligned_vector<float>(m * n, NAN));
+      }
+    }
+
+    double nflops = 2.0 * m * n * k;
+    double nbytes = 4.0 * m * k + 2.0 * k * n + 4.0 * m * n;
 
     // warm up MKL and fbgemm
     // check correctness at the same time
@@ -109,138 +163,182 @@ void performance_test() {
       cblas_sgemm(
           CblasRowMajor,
           CblasNoTrans,
-          btran == matrix_op_t::Transpose ? CblasTrans : CblasNoTrans,
+          CblasNoTrans, // B is pretransposed, if required by operation
           m,
           n,
           k,
-          alpha,
-          A.data(),
+          1.0, // Mutliplication by Alpha is done during transpose of B
+          A[0].data(),
           k,
-          B.data(),
-          (btran == matrix_op_t::NoTranspose) ? n : k,
+          Bt[0].data(),
+          btran == matrix_op_t::NoTranspose ? kAligned : nAligned,
           beta,
-          C_ref.data(),
+          C_ref[0].data(),
+          n);
+#else
+      cblas_sgemm_ref(
+          matrix_op_t::NoTranspose,
+          matrix_op_t::NoTranspose,
+          m,
+          n,
+          k,
+          1.0,
+          A[0].data(),
+          k,
+          Bt[0].data(),
+          (btran == matrix_op_t::NoTranspose) ? kAligned : nAligned,
+          beta,
+          C_ref[0].data(),
           n);
 #endif
 #ifdef _OPENMP
-#pragma omp parallel
+#pragma omp parallel if (num_instances == 1)
 #endif
       {
-        int num_threads = fbgemm_get_num_threads();
-        int tid = fbgemm_get_thread_num();
+        int num_threads = num_instances == 1 ? fbgemm_get_num_threads() : 1;
+        int tid = num_instances == 1 ? fbgemm_get_thread_num() : 0;
         cblas_gemm_compute(
             matrix_op_t::NoTranspose,
             m,
-            A.data(),
-            Bp,
+            A[0].data(),
+            *Bp[0],
             beta,
-            C_fb.data(),
+            C_fb[0].data(),
             tid,
             num_threads);
       }
 
 #if defined(USE_MKL) || defined(USE_BLAS)
       // Compare results
-      for (auto i = 0; i < C_ref.size(); i++) {
-        if (std::abs(C_ref[i] - C_fb[i]) > 1e-3) {
+      for (auto i = 0; i < C_ref[0].size(); i++) {
+        if (std::abs(C_ref[0][i] - C_fb[0][i]) > 1e-3) {
           fprintf(
               stderr,
-              "Error: too high diff between fp32 ref %f and fp16 %f\n",
-              C_ref[i],
-              C_fb[i]);
+              "Error: too high diff between fp32 ref %f and fp16 %f at %d\n",
+              C_ref[0][i],
+              C_fb[0][i],
+              i);
           return;
         }
       }
 #endif
     }
 
-    chrono::time_point<chrono::system_clock> t_begin, t_end;
-#if defined(USE_MKL) || defined(USE_BLAS)
-    // Gold via MKL sgemm
 #if defined(USE_MKL)
-    type = "MKL_FP32";
-#else
+    if (is_mkl) {
+      // Gold via MKL sgemm
+      type = "MKL_FP32";
+#elif defined(USE_BLAS)
     type = "BLAS_FP32";
+#else
+    type = "REF_FP32";
 #endif
-    ttot = 0;
-    for (auto it = -3; it < NITER; it++) {
-      if (flush) {
-        for (auto i = 0; i < llc.size(); i++) {
-          llc[i]++;
-        }
-      }
-      t_begin = chrono::system_clock::now();
-      cblas_sgemm(
-          CblasRowMajor,
-          CblasNoTrans,
-          btran == matrix_op_t::Transpose ? CblasTrans : CblasNoTrans,
+
+      ttot = measureWithWarmup(
+          [&]() {
+            int copy = num_instances == 1 ? 0 : fbgemm_get_thread_num();
+            for (int i = 0; i < repetitions; ++i) {
+#if defined(USE_MKL) || defined(USE_BLAS)
+              cblas_sgemm(
+                  CblasRowMajor,
+                  CblasNoTrans,
+                  CblasNoTrans,
+                  m,
+                  n,
+                  k,
+                  1.0,
+                  A[copy].data(),
+                  k,
+                  Bt[copy].data(),
+                  btran == matrix_op_t::NoTranspose ? kAligned : nAligned,
+                  beta,
+                  C_ref[copy].data(),
+                  n);
+#else
+            cblas_sgemm_ref(
+                matrix_op_t::NoTranspose,
+                matrix_op_t::NoTranspose,
+                m,
+                n,
+                k,
+                1.0,
+                A[copy].data(),
+                k,
+                Bt[copy].data(),
+                (btran == matrix_op_t::NoTranspose) ? kAligned : nAligned,
+                beta,
+                C_ref[copy].data(),
+                n);
+#endif
+            }
+          },
+          3,
+          NITER,
+          [&]() {
+            if (flush) {
+              int copy = num_instances == 1 ? 0 : fbgemm_get_thread_num();
+              cache_evict(A[copy]);
+              cache_evict(Bt[copy]);
+              cache_evict(C_ref[copy]);
+            }
+          },
+          // Use OpenMP if num instances > 1
+          num_instances > 1);
+
+      gflops = nflops / ttot / 1e9;
+      gbs = nbytes / ttot / 1e9;
+      printf(
+          "\n%30s m = %5d n = %5d k = %5d Gflops = %8.4lf GBytes = %8.4lf\n",
+          type.c_str(),
           m,
           n,
           k,
-          alpha,
-          A.data(),
-          k,
-          B.data(),
-          (btran == matrix_op_t::NoTranspose) ? n : k,
-          beta,
-          C_ref.data(),
-          n);
-      t_end = chrono::system_clock::now();
-      if (it >= 0) {
-        double dt = chrono::duration<double>(t_end - t_begin).count();
-        ttot += dt;
-      }
+          gflops * repetitions,
+          gbs * repetitions);
+#ifdef USE_MKL
     }
-    gflops = nflops / ttot / 1e9;
-    gbs = nbytes / ttot / 1e9;
-    printf(
-        "\n%30s m = %5d n = %5d k = %5d Gflops = %8.4lf GBytes = %8.4lf\n",
-        type.c_str(),
-        m,
-        n,
-        k,
-        gflops,
-        gbs);
-    ((volatile char*)(llc.data()));
 #endif
-
     type = "FBP_" + std::string(typeid(btype).name());
 
-    ttot = 0;
-    for (auto it = -3; it < NITER; it++) {
-      if (flush) {
-        for (auto i = 0; i < llc.size(); i++) {
-          llc[i]++;
-        }
-      }
+    ttot = measureWithWarmup(
+        [&]() {
+          // When executing in data decomposition (single-instance) mode
+          // Different threads will access different regions of the same
+          // matrices. Thus, copy to be used is always 0. The numbers of
+          // threads would be the as number of threads in the parallel
+          // region.
+          // When running in functional decomposition (multi-instance) mode
+          // different matrices are used. The copy to be used selected by
+          // thread_id (thread_num), and the number of threads performance
+          // the compute of the same instance is 1.
+          int copy = num_instances == 1 ? 0 : fbgemm_get_thread_num();
+          int num_threads = num_instances == 1 ? fbgemm_get_num_threads() : 1;
+          int tid = num_instances == 1 ? fbgemm_get_thread_num() : 0;
 
-      t_begin = chrono::system_clock::now();
+          for (int i = 0; i < repetitions; ++i) {
+            cblas_gemm_compute(
+                matrix_op_t::NoTranspose,
+                m,
+                A[copy].data(),
+                *Bp[copy],
+                beta,
+                C_fb[copy].data(),
+                tid,
+                num_threads);
+          }
+        },
+        3,
+        NITER,
+        [&]() {
+          if (flush) {
+            int copy = num_instances == 1 ? 0 : fbgemm_get_thread_num();
+            cache_evict(A[copy]);
+            cache_evict(*Bp[copy]);
+            cache_evict(C_fb[copy]);
+          }
+        },
+        true /*useOpenMP*/);
 
-#ifdef _OPENMP
-#pragma omp parallel
-#endif
-      {
-        int num_threads = fbgemm_get_num_threads();
-        int tid = fbgemm_get_thread_num();
-
-        cblas_gemm_compute(
-            matrix_op_t::NoTranspose,
-            m,
-            A.data(),
-            Bp,
-            beta,
-            C_fb.data(),
-            tid,
-            num_threads);
-      }
-
-      t_end = chrono::system_clock::now();
-
-      if (it >= 0) {
-        double dt = chrono::duration<double>(t_end - t_begin).count();
-        ttot += dt;
-      }
-    }
     gflops = nflops / ttot / 1e9;
     gbs = nbytes / ttot / 1e9;
     printf(
@@ -249,19 +347,49 @@ void performance_test() {
         m,
         n,
         k,
-        gflops,
-        gbs);
-    ((volatile char*)(llc.data()));
+        gflops * repetitions,
+        gbs * repetitions);
   }
 }
 
-int main(int /*argc*/, char** /*argv*/) {
+int main(int argc, const char* argv[]) {
+  int num_instances = 1;
 #ifdef _OPENMP
-  // Use 1 thread unless OMP_NUM_THREADS is explicit set.
-  const char* val = getenv("OMP_NUM_THREADS");
-  if (val == nullptr || !*val) {
-    omp_set_num_threads(1);
+  const char* inst = getenv("GEMMBENCH_NUM_INSTANCES");
+  if (inst != nullptr && *inst) {
+    num_instances = std::max(atoi(inst), num_instances);
   }
+  num_instances =
+      parseArgumentInt(argc, argv, "--inst=", num_instances, num_instances);
+  printf("Running %d instances\n", num_instances);
+  if (num_instances > 1) {
+    // Set-up execution for multi-instance mode
+    // Number of threads in OpenMP parallel region is explicitly
+    // set to the number of instances to be executed
+    // If not previosly set by KMP_AFFINITY env. variable
+    // threads are affinitized sequentially to logical processors
+    char env_var[1024];
+    sprintf(
+        env_var, "granularity=fine,explicit,proclist=[1-%d]", num_instances);
+    setenv("KMP_AFFINITY", env_var, 0); // Don't overide if already set
+    omp_set_num_threads(num_instances);
+  } else {
+    // When running single instance use OMP_NUM_THREADS to determine
+    // parallelism. Default behaviour is using a single thread.
+    int num_threads = parseArgumentInt(argc, argv, "--num_threads=", 1, 1);
+    const char* val = getenv("OMP_NUM_THREADS");
+    if (val == nullptr || !*val) {
+      omp_set_num_threads(num_threads);
+    }
+  }
+
 #endif
-  performance_test();
+
+  int repetitions = parseArgumentInt(argc, argv, "--repit=", 1, 1);
+  bool no_flush = parseArgumentBool(argc, argv, "--no-flush", false);
+  bool no_mkl = parseArgumentBool(argc, argv, "--no-mkl", false);
+  bool enableAvx512_ymm = parseArgumentBool(argc, argv, "--avx512-256", false);
+  fbgemmEnableAvx512Ymm(enableAvx512_ymm);
+
+  performance_test(num_instances, !no_flush, repetitions, !no_mkl);
 }

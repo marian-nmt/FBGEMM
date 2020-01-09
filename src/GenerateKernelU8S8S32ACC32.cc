@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 #include <iostream>
-#include "GenerateKernel.h"
+#include "./GenerateKernel.h"
 
 namespace fbgemm {
 
@@ -21,15 +21,14 @@ void CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::initCRegs<
     inst_set_t::avx2>(
     x86::Emitter* a,
     int rowRegs,
-    int colRegs,
-    int leadingDimCReg) {
+    int colRegs) {
   using CRegs = x86::Ymm;
   for (int i = 0; i < rowRegs; ++i) {
     for (int j = 0; j < colRegs; ++j) {
       a->vxorps(
-          CRegs(i * leadingDimCReg + j),
-          CRegs(i * leadingDimCReg + j),
-          CRegs(i * leadingDimCReg + j));
+          CRegs(i * colRegs + j),
+          CRegs(i * colRegs + j),
+          CRegs(i * colRegs + j));
     }
   }
 }
@@ -48,8 +47,7 @@ void CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::genComputeBlock<
     x86::Gp B_pf,
     int rowRegs,
     int colRegs,
-    int lda,
-    int leadingDimCReg) {
+    int lda) {
   // used for matrix A
   x86::Ymm AReg = x86::ymm12;
 
@@ -74,9 +72,7 @@ void CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::genComputeBlock<
       a->vpmaddubsw(res1, AReg, BReg);
       a->vpmaddwd(res1, oneReg, res1);
       a->vpaddd(
-          CRegs(i * leadingDimCReg + j),
-          res1,
-          CRegs(i * leadingDimCReg + j));
+          CRegs(i * colRegs + j), res1, CRegs(i * colRegs + j));
     }
     a->prefetcht0(x86::dword_ptr(B_pf, j * VLEN_ * sizeof(int8_t)));
   }
@@ -95,8 +91,7 @@ void CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::storeCRegs<
     int colRegs,
     x86::Gp C_Offset,
     x86::Gp ldcReg,
-    bool accum,
-    int leadingDimCReg) {
+    bool accum) {
   using CRegs = x86::Ymm;
   for (int i = 0; i < rowRegs; ++i) {
     if (i != 0) {
@@ -105,8 +100,8 @@ void CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::storeCRegs<
     for (int j = 0; j < colRegs; ++j) {
       if (accum) {
         a->vpaddd(
-            CRegs(i * leadingDimCReg + j),
-            CRegs(i * leadingDimCReg + j),
+            CRegs(i * colRegs + j),
+            CRegs(i * colRegs + j),
 #ifdef _MSC_VER
             x86::dword_ptr(a->gpz(9), C_Offset, 0, j * 8 * sizeof(int32_t)));
 #else
@@ -119,7 +114,7 @@ void CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::storeCRegs<
 #else
           x86::dword_ptr(a->zcx(), C_Offset, 0, j * 8 * sizeof(int32_t)),
 #endif
-          CRegs(i * leadingDimCReg + j));
+          CRegs(i * colRegs + j));
     }
   }
 }
@@ -135,9 +130,12 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx2>(
     bool accum,
     int32_t mc,
     int32_t nc,
-    int32_t kc,
+#ifndef NDEBUG
+    int32_t kc) {
+#else
     int32_t /* unused */) {
-  std::tuple<bool, int, int, int, int, int, int, int> kernelSig;
+#endif
+  std::tuple<bool, int, int, int, int, int, int> kernelSig;
   int kBlock;
   int nBlock;
   int mRegBlockSize;
@@ -170,28 +168,44 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx2>(
       nBlock,
       kBlock,
       mRegBlockSize,
-      nRegBlockSize,
-      nRegBlockSizeMin);
+      nRegBlockSize);
 
   return codeCache_.getOrCreate(kernelSig, [&]() -> jit_micro_kernel_fp {
     asmjit::CodeHolder code;
     code.init(runtime().codeInfo());
     x86::Assembler assembler(&code);
-    x86::Emitter *a = assembler.as<x86::Emitter>();
+    x86::Emitter* a = assembler.as<x86::Emitter>();
 #if defined(FBGEMM_LOG_CODE)
     // generated code logging
-    FILE *codeLogfile = fopen(getCodeLoggingFile<inst_set_t::avx2>(
-                                  accum, mc, nc, nBlock, kBlock, mRegBlockSize,
-                                  nRegBlockSize, nRegBlockSizeMin)
-                                  .c_str(),
-                              "w");
-    asmjit::FileLogger *codeLogger = new asmjit::FileLogger(codeLogfile);
+    FILE* codeLogfile = fopen(
+        getCodeLoggingFile<inst_set_t::avx2>(
+            accum,
+            mc,
+            nc,
+            nBlock,
+            kBlock,
+            mRegBlockSize,
+            nRegBlockSize,
+            nRegBlockSizeMin)
+            .c_str(),
+        "w");
+    asmjit::FileLogger* codeLogger = new asmjit::FileLogger(codeLogfile);
     if (codeLogger) {
       code.setLogger(codeLogger);
     }
 #endif
 
     // assert(mc <= 12 && "mc must be <= 12 (available registers constraint)");
+    assert(
+        kc % row_interleave == 0 && "kc must be a multiple of row_interleave");
+    assert(nc % nRegBlockSizeMin == 0 && "nc must be a multiple of NR_MIN");
+    int maxMRegs = mRegBlockSize;
+    int maxNRegs = nRegBlockSize * row_interleave / VLEN_;
+    assert(
+        maxMRegs * maxNRegs <= 12 &&
+        "MR*(NR*ROW_INTERLEAVE*8/256) \
+        must be <= 12(available registers constraint)");
+
     int mRegBlocks = mc / mRegBlockSize;
     int mRegBlocksRem = mc % mRegBlockSize;
 
@@ -213,9 +227,14 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx2>(
 #endif
 
     asmjit::FuncDetail func;
-    func.init(
-        asmjit::FuncSignatureT<void, uint8_t *, int8_t *, int8_t *, int32_t *,
-                               int, int>(asmjit::CallConv::kIdHost));
+    func.init(asmjit::FuncSignatureT<
+              void,
+              uint8_t*,
+              int8_t*,
+              int8_t*,
+              int32_t*,
+              int,
+              int>(asmjit::CallConv::kIdHost));
 
     asmjit::FuncFrame frame;
     frame.init(func);
@@ -223,8 +242,8 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx2>(
         x86::Reg::kGroupVec,
         asmjit::Support::bitMask(0, 1, 2, 3, 4, 5, 6, 7) |
             asmjit::Support::bitMask(8, 9, 10, 11, 12, 13, 14, 15));
-    frame.setDirtyRegs(x86::Reg::kGroupGp,
-                       asmjit::Support::bitMask(8, 9, 10, 11, 12, 13, 14));
+    frame.setDirtyRegs(
+        x86::Reg::kGroupGp, asmjit::Support::bitMask(8, 9, 10, 11, 12, 13, 14));
 
     asmjit::FuncArgsAssignment args(&func);
     args.assignAll(buffer_A, buffer_B, B_pf, CBase, kSize, ldcReg);
@@ -253,13 +272,13 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx2>(
     a->imul(ldcReg, ldcReg, static_cast<asmjit::Imm>(sizeof(int32_t)));
     a->mov(C_Offset, 0);
 
-    int colRegs = nc * row_interleave * sizeof(int8_t) / VLEN_;
+    int colRegs = nc * row_interleave / VLEN_;
 
     auto issueLoopOverK = [&](int rowRegs) {
       asmjit::Label LoopKLabel = a->newLabel();
 
       // Init C (result) vector registers
-      initCRegs<inst_set_t::avx2>(a, rowRegs, colRegs, colRegs);
+      initCRegs<inst_set_t::avx2>(a, rowRegs, colRegs);
 
       // Loops over K
       a->mov(kIdx, 0);
@@ -268,25 +287,27 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx2>(
       // k is incremented by row_interleave
       a->add(kIdx, static_cast<asmjit::Imm>(row_interleave));
 
-      genComputeBlock<inst_set_t::avx2>(a, buffer_A, buffer_B, B_pf, rowRegs,
-                                        colRegs, kBlock, colRegs);
+      genComputeBlock<inst_set_t::avx2>(
+          a, buffer_A, buffer_B, B_pf, rowRegs, colRegs, kBlock);
 
       // update buffer_A address for next k iteration
-      a->add(buffer_A,
-             static_cast<asmjit::Imm>(row_interleave * sizeof(uint8_t)));
+      a->add(
+          buffer_A, static_cast<asmjit::Imm>(row_interleave * sizeof(uint8_t)));
 
       // update buffer_B address for next k iteration
-      a->add(buffer_B, static_cast<asmjit::Imm>(nBlock * row_interleave *
-                                                sizeof(int8_t)));
-      a->add(B_pf, static_cast<asmjit::Imm>(nBlock * row_interleave *
-                                            sizeof(int8_t)));
+      a->add(
+          buffer_B,
+          static_cast<asmjit::Imm>(nBlock * row_interleave * sizeof(int8_t)));
+      a->add(
+          B_pf,
+          static_cast<asmjit::Imm>(nBlock * row_interleave * sizeof(int8_t)));
 
       a->cmp(kIdx, kSize);
       a->jl(LoopKLabel);
 
       // store C matrix
-      storeCRegs<inst_set_t::avx2>(a, rowRegs, colRegs, C_Offset, ldcReg, accum,
-                                   colRegs);
+      storeCRegs<inst_set_t::avx2>(
+          a, rowRegs, colRegs, C_Offset, ldcReg, accum);
     };
 
     if (mRegBlocks > 0) {
@@ -305,8 +326,9 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx2>(
       int rowRegs = mRegBlockSize;
       // increment A for next block
       a->sub(buffer_A, kSize);
-      a->add(buffer_A,
-             static_cast<asmjit::Imm>((rowRegs)*kBlock * sizeof(uint8_t)));
+      a->add(
+          buffer_A,
+          static_cast<asmjit::Imm>((rowRegs)*kBlock * sizeof(uint8_t)));
 
       // increment C for next block
       a->imul(C_Offset, ldcReg, static_cast<asmjit::Imm>(rowRegs));
@@ -322,7 +344,7 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx2>(
     }
     // generate code for remainder
     if (mRegBlocksRem > 0) {
-        issueLoopOverK(mRegBlocksRem);
+      issueLoopOverK(mRegBlocksRem);
     }
 
     a->emitEpilog(frame);

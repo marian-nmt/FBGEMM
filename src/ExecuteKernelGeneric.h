@@ -6,7 +6,7 @@
  */
 #pragma once
 #include <cstdint>
-#include "GenerateKernel.h"
+#include "./GenerateKernel.h"
 #include "fbgemm/Fbgemm.h"
 
 namespace fbgemm {
@@ -39,8 +39,7 @@ class ExecuteKernel : public CodeGenBase<
       typename packingBMatrix::accType* C_buffer,
       int32_t ldc,
       const processOutputType& outputProcess,
-      int thread_id,
-      int num_threads,
+      thread_type_t th_info,
       const BlockingFactors* params = nullptr);
   void execute(int kBlock);
 

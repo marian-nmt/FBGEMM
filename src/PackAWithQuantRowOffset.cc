@@ -4,6 +4,7 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
+#define FBGEMM_EXPORTS
 #include <cpuinfo.h>
 #include <cassert>
 #include <cmath>
@@ -11,7 +12,7 @@
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
-#include "OptimizedKernelsAvx2.h"
+#include "./OptimizedKernelsAvx2.h"
 #include "fbgemm/Fbgemm.h"
 #include "fbgemm/QuantUtilsAvx2.h"
 
@@ -44,6 +45,12 @@ PackAWithQuantRowOffset<T, accT>::PackAWithQuantRowOffset(
       row_offset_(row_offset) {
   if (!cpuinfo_initialize()) {
     throw std::runtime_error("Failed to initialize cpuinfo!");
+  }
+  if (scale_ == 0.0f) {
+    throw std::runtime_error("scale cannot be zero");
+  }
+  if (std::isinf(1.0f / scale_)) {
+    throw std::runtime_error("scale's reciprocal cannot be infinity");
   }
   if ((!fbgemmHasAvx512VnniSupport() && !fbgemmHasAvx512Support() &&
        !fbgemmHasAvx2Support())) {
@@ -85,12 +92,12 @@ PackAWithQuantRowOffset<T, accT>::PackAWithQuantRowOffset(
     BaseType::buf_ = pmat;
   } else {
     BaseType::bufAllocatedHere_ = true;
-    BaseType::buf_ = (T*)fbgemmAlignedAlloc(
-        64, BaseType::brow_ * BaseType::bcol_ * sizeof(T));
+    BaseType::buf_ = static_cast<T*>(fbgemmAlignedAlloc(
+        64, BaseType::brow_ * BaseType::bcol_ * sizeof(T)));
   }
   if (!row_offset_) {
     rowOffsetAllocatedHere = true;
-    row_offset_ = reinterpret_cast<int32_t*>(
+    row_offset_ = static_cast<int32_t*>(
         fbgemmAlignedAlloc(64, BaseType::brow_ * sizeof(accT)));
   }
 }
@@ -116,7 +123,8 @@ void PackAWithQuantRowOffset<T, accT>::pack(const block_type_t& block) {
       (block.col_start % (this->numCols() / this->numGroups())) != 0;
   int32_t* row_offset_buf = getRowOffsetBuffer();
 
-  float* smat_transposed = new float[block.row_size * block.col_size];
+  float* smat_transposed = static_cast<float*>(
+      fbgemmAlignedAlloc(64, block.row_size * block.col_size * sizeof(float)));
   if (tr) {
     transpose_simd(
         block.col_size,
@@ -155,8 +163,7 @@ void PackAWithQuantRowOffset<T, accT>::pack(const block_type_t& block) {
       out[i * BaseType::blockColSize() + j] = 0;
     }
   }
-
-  delete[] smat_transposed;
+  fbgemmAlignedFree(smat_transposed);
 }
 
 template <typename T, typename accT>

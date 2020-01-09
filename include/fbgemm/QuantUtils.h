@@ -5,9 +5,9 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include "FbgemmBuild.h"
-#include "QuantUtilsAvx2.h"
-#include "Utils.h"
+#include "./FbgemmBuild.h"
+#include "./QuantUtilsAvx2.h"
+#include "./Utils.h"
 
 namespace fbgemm {
 
@@ -28,16 +28,11 @@ FBGEMM_API void ChooseRequantizationMultiplier(
 ////////////////////////////////////////////////////////////////////////////////
 // Utility functions
 
-/// Clamp src in T1 to the desired precision and convert it to T2
-template <typename T1, typename T2 = std::uint8_t>
-FBGEMM_API T2 clamp(T1 src, int precision, bool is_signed = false)
+// Clamp src in T1 to the desired precision and convert it to T2
 // TODO: T26263653 fix signed-integer-overflow undefined behavior
-#if defined(__has_feature)
-#if __has_feature(__address_sanitizer__)
-    __attribute__((__no_sanitize__("signed-integer-overflow")))
-#endif
-#endif
-{
+template <typename T1, typename T2 = std::uint8_t>
+NO_SANITIZE("signed-integer-overflow")
+FBGEMM_API T2 clamp(T1 src, int precision, bool is_signed = false) {
   std::int32_t min = is_signed ? -(1LL << (precision - 1)) : 0;
   std::int32_t max =
       is_signed ? ((1LL << (precision - 1)) - 1) : (1LL << precision) - 1;
@@ -91,16 +86,16 @@ FBGEMM_API void Quantize(
  *                  KXC corresponds to KRSC or KTRSC (for weight tensors with
  *                  time dimension)
  *
- * @params K Output channels for weight tensors
- * @params C Number of channels
- * @params X R*S or T*R*S
- * @params G Groups (if G == C the function performs channelwise quantization;
- *                   if 1 < G < C the function performs groupwise quantization;
- *                   if G == 1 the function performs per tensor quantization;)
- * @params scales floating point scales.
- *                Size should be equal G
- * @params zero_points zero points (should be reprsentable in type T).
- *                     Size should be equal G
+ * @param K Output channels for weight tensors
+ * @param C Number of channels
+ * @param X R*S or T*R*S
+ * @param G Groups (if G == C the function performs channelwise quantization;
+ *                  if 1 < G < C the function performs groupwise quantization;
+ *                  if G == 1 the function performs per tensor quantization;)
+ * @param scales floating point scales.
+ *               Size should be equal G
+ * @param zero_points zero points (should be reprsentable in type T).
+ *                    Size should be equal G
  */
 template <typename T, layout_t LAYOUT = layout_t::KCX>
 FBGEMM_API void QuantizeGroupwise(

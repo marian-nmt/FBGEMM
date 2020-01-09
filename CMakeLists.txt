@@ -29,12 +29,19 @@ endif(MSVC)
 
 #All the source files that either use avx2 instructions statically or JIT
 #avx2/avx512 instructions.
-set(FBGEMM_GENERIC_SRCS src/ExecuteKernel.cc
+set(FBGEMM_GENERIC_SRCS src/EmbeddingSpMDM.cc
+                src/EmbeddingSpMDM4Bit.cc
+                src/ExecuteKernel.cc
                 src/ExecuteKernelU8S8.cc
                 src/Fbgemm.cc
-                src/FbgemmFP16.cc
+                src/FbgemmBfloat16Convert.cc
                 src/FbgemmConv.cc
+                src/FbgemmFP16.cc
+                src/FbgemmFloat16Convert.cc
+                src/FbgemmI64.cc
                 src/FbgemmI8Spmdm.cc
+                src/FbgemmSpConv.cc
+                src/FbgemmSpMM.cc
                 src/GenerateKernelU8S8S32ACC16.cc
                 src/GenerateKernelU8S8S32ACC16Avx512.cc
                 src/GenerateKernelU8S8S32ACC16Avx512VNNI.cc
@@ -52,6 +59,7 @@ set(FBGEMM_GENERIC_SRCS src/ExecuteKernel.cc
                 src/PackWeightsForConv.cc
                 src/QuantUtils.cc
                 src/RefImplementations.cc
+                src/SparseAdagrad.cc
                 src/Utils.cc)
 
 #check if compiler supports avx512
@@ -78,7 +86,9 @@ endif()
 
 #check if compiler supports openmp
 find_package(OpenMP)
-if (OPENMP_FOUND)
+if (OpenMP_FOUND)
+  message(WARNING "OpenMP found! OpenMP_C_INCLUDE_DIRS = ${OpenMP_C_INCLUDE_DIRS}")
+  include_directories(${OpenMP_C_INCLUDE_DIRS})
   set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
   set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
@@ -88,20 +98,30 @@ endif()
 
 #All the source files that either use avx2 instructions statically
 set(FBGEMM_AVX2_SRCS
+  src/FbgemmBfloat16ConvertAvx2.cc
   src/FbgemmFP16UKernelsAvx2.cc
+  src/FbgemmFloat16ConvertAvx2.cc
   src/FbgemmI8Depthwise3DAvx2.cc
+  src/FbgemmI8Depthwise3x3Avx2.cc
   src/FbgemmI8DepthwiseAvx2.cc
+  src/FbgemmI8DepthwisePerChannelQuantAvx2.cc
   src/OptimizedKernelsAvx2.cc
   src/PackDepthwiseConvMatrixAvx2.cc
   src/QuantUtilsAvx2.cc
   src/UtilsAvx2.cc)
 
 #All the source files that use avx512 instructions statically
-set(FBGEMM_AVX512_SRCS src/UtilsAvx512.cc)
+set(FBGEMM_AVX512_SRCS
+  src/FbgemmBfloat16ConvertAvx512.cc
+  src/FbgemmFP16UKernelsAvx512.cc
+  src/FbgemmFloat16ConvertAvx512.cc
+  src/FbgemmFP16UKernelsAvx512_256.cc
+  src/UtilsAvx512.cc)
 
 set(FBGEMM_PUBLIC_HEADERS include/fbgemm/Fbgemm.h
                           include/fbgemm/FbgemmBuild.h
                           include/fbgemm/FbgemmFP16.h
+                          include/fbgemm/FbgemmI8DepthwiseAvx2.h
                           include/fbgemm/OutputProcessing-inl.h
                           include/fbgemm/PackingTraits-inl.h
                           include/fbgemm/QuantUtils.h
@@ -124,10 +144,10 @@ set_target_properties(fbgemm_generic fbgemm_avx2 fbgemm_avx512 PROPERTIES
 
 if (NOT MSVC)
   target_compile_options(fbgemm_avx2 PRIVATE
-    "-m64" "-mavx2" "-mfma" "-masm=intel" "-mf16c")
+    "-m64" "-mavx2" "-mf16c" "-mfma" "-masm=intel")
   target_compile_options(fbgemm_avx512 PRIVATE
     "-m64" "-mavx2" "-mfma" "-mavx512f" "-mavx512bw" "-mavx512dq"
-    "-mavx512vl" "-masm=intel" "-mf16c")
+    "-mavx512vl" "-masm=intel")
 endif()
 
 if(NOT TARGET asmjit)

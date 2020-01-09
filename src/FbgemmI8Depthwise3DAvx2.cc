@@ -4,12 +4,15 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
+#define FBGEMM_EXPORTS
 #include "fbgemm/FbgemmI8DepthwiseAvx2.h"
 
 #include <string>
 #include <tuple> // for tie
 
-#include "FbgemmI8DepthwiseAvx2-inl.h"
+#include "./FbgemmI8DepthwiseAvx2-inl.h"
+#include "./MaskAvx2.h"
+#include "fbgemm/UtilsAvx2.h"
 
 using namespace std;
 
@@ -19,7 +22,7 @@ template <
     bool SUM_A,
     bool REMAINDER = false,
     bool PER_CHANNEL_QUANTIZATION = false>
-static inline ALWAYS_INLINE void inner_prod_3x3x3_packed_(
+static ALWAYS_INLINE void inner_prod_3x3x3_packed_(
     int T,
     int H,
     int W,
@@ -37,8 +40,8 @@ static inline ALWAYS_INLINE void inner_prod_3x3x3_packed_(
   __m256i A_zero_point_v = _mm256_set1_epi8(static_cast<uint8_t>(A_zero_point));
   __m256i mask_v = _mm256_setzero_si256();
   if (REMAINDER) {
-    mask_v = _mm256_loadu_si256(
-        reinterpret_cast<const __m256i*>(masks[remainder / 4]));
+    mask_v = _mm256_load_si256(reinterpret_cast<const __m256i*>(
+        internal::avx2_ps_or_epi32_masks[remainder / 4]));
   }
 
   // The code below can be written as a simple R*S loop but the compiler
@@ -272,7 +275,7 @@ template <
     bool A_SYMMETRIC,
     bool B_SYMMETRIC,
     typename BIAS_TYPE>
-static inline ALWAYS_INLINE void depthwise_3x3x3_kernel_(
+static ALWAYS_INLINE void depthwise_3x3x3_kernel_(
     int T,
     int H,
     int W,
@@ -359,7 +362,7 @@ static inline ALWAYS_INLINE void depthwise_3x3x3_kernel_(
 }
 
 template <bool FUSE_RELU, bool HAS_BIAS, bool A_SYMMETRIC, typename BIAS_TYPE>
-static inline ALWAYS_INLINE void
+static ALWAYS_INLINE void
 depthwise_3x3x3_per_channel_quantization_kernel_(
     int T,
     int H,
@@ -457,7 +460,7 @@ template <
     bool A_SYMMETRIC,
     bool B_SYMMETRIC,
     typename BIAS_TYPE>
-static inline ALWAYS_INLINE void depthwise_3x3x3_pad_1_(
+static ALWAYS_INLINE void depthwise_3x3x3_pad_1_(
     int N,
     int T,
     int H,
@@ -488,9 +491,8 @@ static inline ALWAYS_INLINE void depthwise_3x3x3_pad_1_(
   int W_OUT = (W + PAD_L + PAD_R - K_W) / stride_w + 1;
   const int8_t* Bp = B.PackedMat();
 
-  //int32_t row_offsets[(K + 31) / 32 * 32] __attribute__((aligned(64)));
-  int32_t* row_offsets
-      = static_cast<int32_t*>(ALIGNED_MALLOC((K + 31) / 32 * 32 * sizeof(int32_t), 64));
+  int32_t* row_offsets = static_cast<int32_t*>(
+      fbgemmAlignedAlloc(64, (K + 31) / 32 * 32 * sizeof(int32_t)));
 
   int n_begin, n_end;
   int t_begin, t_end, h_begin, h_end;
@@ -568,11 +570,11 @@ static inline ALWAYS_INLINE void depthwise_3x3x3_pad_1_(
       } // h
     } // t
   } // for each n
-  FREE(row_offsets);
+  fbgemmAlignedFree(row_offsets);
 };
 
 template <bool FUSE_RELU, bool HAS_BIAS, bool A_SYMMETRIC, typename BIAS_TYPE>
-static inline ALWAYS_INLINE void
+static ALWAYS_INLINE void
 depthwise_3x3x3_per_channel_quantization_pad_1_(
     int N,
     int T,
@@ -604,9 +606,8 @@ depthwise_3x3x3_per_channel_quantization_pad_1_(
   int W_OUT = (W + PAD_L + PAD_R - K_W) / stride_w + 1;
   const int8_t* Bp = B.PackedMat();
 
-  //int32_t row_offsets[(K + 31) / 32 * 32] __attribute__((aligned(64)));
-  int32_t* row_offsets
-      = static_cast<int32_t*>(ALIGNED_MALLOC((K + 31) / 32 * 32 * sizeof(int32_t), 64));
+  int32_t* row_offsets = static_cast<int32_t*>(
+      fbgemmAlignedAlloc(64, (K + 31) / 32 * 32 * sizeof(int32_t)));
 
   int n_begin, n_end;
   int t_begin, t_end, h_begin, h_end;
@@ -684,7 +685,8 @@ depthwise_3x3x3_per_channel_quantization_pad_1_(
       } // h
     } // t
   } // for each n
-  FREE(row_offsets);
+
+  fbgemmAlignedFree(row_offsets);
 };
 
 // Dispatch A_SYMMETRIC and B_SYMMETRIC
@@ -710,7 +712,8 @@ static void depthwise_3x3x3_pad_1_(
     float act_times_w_scale,
     int thread_id,
     int num_threads) {
-  int32_t* C_int32_temp = new int32_t[(K + 31) / 32 * 32];
+  int32_t* C_int32_temp = static_cast<int32_t*>(
+      fbgemmAlignedAlloc(64, (K + 31) / 32 * 32 * sizeof(int32_t)));
   if (A_zero_point == 0 || col_offsets == nullptr) {
     if (B_zero_point == 0) {
       depthwise_3x3x3_pad_1_<
@@ -828,7 +831,7 @@ static void depthwise_3x3x3_pad_1_(
           num_threads);
     }
   }
-  delete[] C_int32_temp;
+  fbgemmAlignedFree(C_int32_temp);
 }
 
 // Dispatch HAS_BIAS
@@ -1011,7 +1014,8 @@ static void depthwise_3x3x3_per_channel_quantization_pad_1_(
     const float* act_times_w_scale,
     int thread_id,
     int num_threads) {
-  int32_t* C_int32_temp = new int32_t[(K + 31) / 32 * 32];
+  int32_t* C_int32_temp = static_cast<int32_t*>(
+      fbgemmAlignedAlloc(64, (K + 31) / 32 * 32 * sizeof(int32_t)));
   if (A_zero_point == 0 || col_offsets == nullptr) {
     depthwise_3x3x3_per_channel_quantization_pad_1_<
         FUSE_RELU,
@@ -1067,7 +1071,7 @@ static void depthwise_3x3x3_per_channel_quantization_pad_1_(
         thread_id,
         num_threads);
   }
-  delete[] C_int32_temp;
+  fbgemmAlignedFree(C_int32_temp);
 }
 
 // Dispatch HAS_BIAS
@@ -1235,97 +1239,6 @@ void depthwise_3x3x3_per_channel_quantization_pad_1(
         thread_id,
         num_threads);
   }
-}
-
-// To be removed
-void depthwise_3x3x3_pad_1(
-    int N,
-    int T,
-    int H,
-    int W,
-    int K,
-    int stride_t,
-    int stride_h,
-    int stride_w,
-    int32_t A_zero_point,
-    const uint8_t* A,
-    int32_t B_zero_point,
-    const PackedDepthWiseConvMatrix& B,
-    float C_multiplier,
-    int32_t C_zero_point,
-    uint8_t* C,
-    const int32_t* col_offsets,
-    const int32_t* bias,
-    bool fuse_relu,
-    int thread_id,
-    int num_threads) {
-  depthwise_3x3x3_pad_1<int32_t>(
-      N,
-      T,
-      H,
-      W,
-      K,
-      stride_t,
-      stride_h,
-      stride_w,
-      A_zero_point,
-      A,
-      B_zero_point,
-      B,
-      C_multiplier,
-      C_zero_point,
-      C,
-      col_offsets,
-      bias,
-      fuse_relu,
-      1.0f, // act_scale * weight_scale
-      thread_id,
-      num_threads);
-}
-
-void depthwise_3x3x3_per_channel_quantization_pad_1(
-    int N,
-    int T,
-    int H,
-    int W,
-    int K,
-    int stride_t,
-    int stride_h,
-    int stride_w,
-    int32_t A_zero_point,
-    const uint8_t* A,
-    const int32_t* B_zero_point,
-    const PackedDepthWiseConvMatrix& B,
-    const float* C_multiplier,
-    int32_t C_zero_point,
-    uint8_t* C,
-    const int32_t* col_offsets,
-    const int32_t* bias,
-    bool fuse_relu,
-    int thread_id,
-    int num_threads) {
-  depthwise_3x3x3_per_channel_quantization_pad_1(
-      N,
-      T,
-      H,
-      W,
-      K,
-      stride_t,
-      stride_h,
-      stride_w,
-      A_zero_point,
-      A,
-      B_zero_point,
-      B,
-      C_multiplier,
-      C_zero_point,
-      C,
-      col_offsets,
-      bias,
-      fuse_relu,
-      nullptr, // act_scale * weight_scale
-      thread_id,
-      num_threads);
 }
 
 template void depthwise_3x3x3_pad_1(

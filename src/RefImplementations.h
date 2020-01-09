@@ -17,7 +17,7 @@ namespace fbgemm {
 /**
  * @brief Reference implementation of requantization step.
  * int32 multiplier
- * @params bias can be nullptr
+ * @param bias can be nullptr
  */
 FBGEMM_API void requantize_u8acc32_ref(
     int M,
@@ -38,12 +38,12 @@ FBGEMM_API void requantize_u8acc32_ref(
 /**
  * @brief Reference implementation of requantization step.
  * float multiplier
- * @params bias can be nullptr
- * @params ncols_per_quant_group the number of columns share the same
- *         quantization parameter.
- *         ncols_per_quant_group == N : per-tensor quantization
- *         ncols_per_quant_group == N / groups : per-group quantization
- *         ncols_per_quant_group == 1 : per-channel quantization
+ * @param bias can be nullptr
+ * @param ncols_per_quant_group the number of columns share the same
+ *        quantization parameter.
+ *        ncols_per_quant_group == N : per-tensor quantization
+ *        ncols_per_quant_group == N / groups : per-group quantization
+ *        ncols_per_quant_group == 1 : per-channel quantization
  */
 FBGEMM_API void requantize_u8acc32_ref(
     int M,
@@ -80,7 +80,7 @@ FBGEMM_API void matmul_u8i8acc32_ref(
  * @brief Reference implementation of matrix multiply with uint 8 for A,
  * int8 for B, and 16-bit accumulation.
  */
-void FBGEMM_API matmul_u8i8acc16_ref(
+FBGEMM_API void matmul_u8i8acc16_ref(
     int M,
     int N,
     int K,
@@ -93,24 +93,9 @@ void FBGEMM_API matmul_u8i8acc16_ref(
     std::int32_t* Cint32);
 
 /**
- * @brief Reference implementation of matrix multiply with fp32 (single
- * precision) floating point number.
- */
-void FBGEMM_API matmul_fp_ref(
-    int M,
-    int N,
-    int K,
-    int lda,
-    int ldb,
-    int ldc,
-    const float* Afp32,
-    const float* Bfp32,
-    float* Cfp32);
-
-/**
  * @brief Reference implementation of cblas_sgemm in MKL/BLAS.
  */
-void FBGEMM_API cblas_sgemm_ref(
+FBGEMM_API void cblas_sgemm_ref(
     const matrix_op_t transa,
     const matrix_op_t transb,
     const int m,
@@ -123,8 +108,21 @@ void FBGEMM_API cblas_sgemm_ref(
     int ldb,
     float beta,
     float* Cfp32,
-    int ldc
-    );
+    int ldc);
+
+FBGEMM_API void cblas_gemm_i64_i64acc_ref(
+    matrix_op_t transa,
+    matrix_op_t transb,
+    int M,
+    int N,
+    int K,
+    const std::int64_t* A,
+    int lda,
+    const std::int64_t* B,
+    int ldb,
+    bool accumulate,
+    std::int64_t* C,
+    int ldc);
 
 /**
  * @brief Reference implementation to compute row_offsets (sums of rows of A).
@@ -140,8 +138,8 @@ FBGEMM_API void row_offsets_u8acc32_ref(
  * @brief Reference implementation to compute adjusted col_offsets (sum of
  * columns of B and adjusted with B_zero_point)
  *
- * @params ncols_per_quant_group see ncols_per_quant_group in
- *         requantize_u8acc32_ref
+ * @param ncols_per_quant_group see ncols_per_quant_group in
+ *        requantize_u8acc32_ref
  */
 FBGEMM_API void col_offsets_with_zero_pt_s8acc32_ref(
     int K,
@@ -189,6 +187,18 @@ FBGEMM_API void conv_ref(
     std::int32_t* C);
 
 /*
+ * @brief Reference implementation of convolution operation.
+ * The activations A are assumed to be in NHiWiC format.
+ * The filters B are assumed to be in RSCK format.
+ * The output C is assumed to be in NHoWoC format.
+ */
+FBGEMM_API void conv_ref(
+    const conv_param_t<2>& conv_p,
+    const float* A,
+    const float* B,
+    float* C);
+
+/*
  * @brief Transforms weights from  G K/G (R S C/G) to G (R S C/G) K/G format.
  */
 template <int SPATIAL_DIM = 2>
@@ -214,5 +224,57 @@ FBGEMM_API void im2col_ref(
     const std::uint8_t* A,
     std::int32_t A_zero_point,
     std::uint8_t* Ao);
+
+template <typename inType = std::uint8_t, typename IndexType = std::int64_t>
+FBGEMM_API bool EmbeddingSpMDM_ref(
+    const std::int64_t block_size,
+    const std::int64_t output_size,
+    const std::int64_t index_size,
+    const std::int64_t data_size,
+    const inType* input,
+    const IndexType* indices,
+    const int* lengths,
+    const float* weights, // optional, can be null for non-weighted sum
+    bool normalize_by_lengths,
+    float* out,
+    bool is_weight_positional = false);
+
+template <typename IndexType = std::int64_t>
+FBGEMM_API bool EmbeddingSpMDM4Bit_ref(
+    const std::int64_t block_size,
+    const std::int64_t output_size,
+    const std::int64_t index_size,
+    const std::int64_t data_size,
+    const std::uint8_t* input,
+    const IndexType* indices,
+    const int* lengths,
+    const float* weights, // optional, can be null for non-weighted sum
+    bool normalize_by_lengths,
+    float* out,
+    bool is_weight_positional = false);
+
+template <typename IndexType>
+FBGEMM_API int sparse_adagrad_ref(
+    int num_rows, // number of rows reading
+    int block_size, // number of parameters per rows
+    std::uint64_t param_size, // total number of parameters
+    float* w, // input parameters
+    const float* g, // input gradients
+    float* h, // input momentums
+    const IndexType* indices, // indices of each row
+    float epsilon,
+    float lr);
+
+template <typename IndexType>
+FBGEMM_API int rowwise_sparse_adagrad_ref(
+    int num_rows, // number of rows reading
+    int block_size, // number of parameters per rows
+    std::uint64_t param_size, // total number of parameters
+    float* w, // input parameters
+    const float* g, // input gradients
+    float* h, // input momentums
+    const IndexType* indices, // indices of each row
+    float epsilon,
+    float lr);
 
 } // namespace fbgemm

@@ -4,10 +4,12 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
+#define FBGEMM_EXPORTS
 #include "fbgemm/Fbgemm.h"
 #include <cpuinfo.h>
 #include <stdexcept>
-#include "ExecuteKernel.h"
+#include <functional>
+#include "./ExecuteKernel.h"
 
 #ifdef FBGEMM_MEASURE_TIME_BREAKDOWN
 double packing_time = 0.0;
@@ -117,6 +119,7 @@ void fbgemmPacked(
 
   int MDim = packA.numRows();
   int KDimPerGroup = packB.numRows() / G;
+  int NDim = packB.numCols();
 
   int kBlocks = (KDimPerGroup + KCB - 1) / KCB;
 
@@ -135,31 +138,19 @@ void fbgemmPacked(
   t_very_start = std::chrono::high_resolution_clock::now();
 #endif
 
-  int g_begin, g_end, i_begin, i_end;
-  if (G >= num_threads) {
-    // When G >= nthreads, just parallelize over G
-    // TODO: when G == nthreads + 1, we'll have a big load imbalance because
-    // only one thread will get 2 groups.
-    fbgemmGetRange(num_threads, thread_id, G, 1, g_begin, g_end);
-    i_begin = 0;
-    i_end = MDim;
-  } else {
-    // Otherwise, each group is parallelized by multiple threads.
-    // nthreads_per_group is floor(nthreads / G).
-    // If we use ceil, some groups won't be handled by any thread.
-    int nthreads_per_group = num_threads / G;
-    g_begin = std::max(std::min(thread_id / nthreads_per_group, G - 1), 0);
-    g_end = std::min(g_begin + 1, G);
+  thread_type_t th_info =
+      fbgemmGetThreadPartition(G, MDim, NDim, thread_id, num_threads);
+  // if (thread_id == 0)
+  //   std::cout << ", " << th_info.toString();
 
-    int tid_of_g_begin = std::min(g_begin * nthreads_per_group, num_threads);
-    int tid_of_g_end = std::min(
-        (g_end == G) ? num_threads : (tid_of_g_begin + nthreads_per_group),
-        num_threads);
-    int nthreads_within_group = tid_of_g_end - tid_of_g_begin;
-    int tid_within_group = thread_id - tid_of_g_begin;
-    fbgemmGetRange(
-        nthreads_within_group, tid_within_group, MDim, MR, i_begin, i_end);
-  }
+  int g_begin, g_end, i_begin, i_end;
+
+  // Calculate the begin and end index along the group dimension
+  fbgemmPartition1D(
+      th_info.g_thread_id, th_info.g_num_threads, G, g_begin, g_end);
+  // Calculate the begin and end index along the m dimension
+  fbgemmPartition1DBlocked(
+      th_info.m_thread_id, th_info.m_num_threads, MDim, MR, i_begin, i_end);
 
   for (int g = g_begin; g < g_end; ++g) {
     ExecuteKernel<packingAMatrix, packingBMatrix, cT, processOutputType>
@@ -170,8 +161,7 @@ void fbgemmPacked(
             C_buffer,
             ldc,
             outProcess,
-            thread_id,
-            num_threads,
+            th_info,
             blocking_params);
     for (int i = i_begin; i < i_end; i += MCB) { // i is the element index
       mc = std::min(i_end - i, MCB);
@@ -215,17 +205,56 @@ void fbgemmPacked(
 }
 
 template <int SPATIAL_DIM>
-FBGEMM_API bool fbgemmOptimizedGConv(const conv_param_t<SPATIAL_DIM>& conv_p) {
+bool fbgemmOptimizedGConv(const conv_param_t<SPATIAL_DIM>& conv_p) {
+  static_assert(SPATIAL_DIM >= 2, "Unsupported spatial dims");
   int C_per_G = conv_p.IC / conv_p.G;
   int K_per_G = conv_p.OC / conv_p.G;
 
-  return (SPATIAL_DIM == 2) && (C_per_G == K_per_G) &&
-      (C_per_G == 4 || C_per_G == 8 || C_per_G == 16) && (conv_p.G % 8 == 0) &&
-      (conv_p.K[0] == conv_p.K[1]) && (conv_p.K[0] == 3) &&
-      (conv_p.pad[0] == 1) && (conv_p.pad[1] == 1) &&
-      (conv_p.pad[0] == conv_p.pad[2]) && (conv_p.pad[1] == conv_p.pad[3]) &&
-      (conv_p.dilation[0] == 1) && (conv_p.dilation[0] == conv_p.dilation[1]) &&
-      (conv_p.stride[0] == 1) && (conv_p.stride[0] == conv_p.stride[1]);
+  int G_together = PackWeightMatrixForGConv<int8_t, int32_t, SPATIAL_DIM>::
+      numOfGroupsTogether(conv_p);
+
+  auto areEqual = [](int a, int b) { return a == b; };
+
+  return (C_per_G == K_per_G) &&
+      (C_per_G == 2 || C_per_G == 4 || C_per_G == 8 || C_per_G == 16) &&
+      (conv_p.G >= G_together) &&
+
+      std::all_of(
+             conv_p.K.begin(),
+             conv_p.K.end(),
+             std::bind(areEqual, std::placeholders::_1, 3)) &&
+
+      std::all_of(
+             conv_p.pad.begin(),
+             conv_p.pad.end(),
+             std::bind(areEqual, std::placeholders::_1, 1)) &&
+
+      std::all_of(
+             conv_p.dilation.begin(),
+             conv_p.dilation.end(),
+             std::bind(areEqual, std::placeholders::_1, 1)) &&
+
+      // Height/Width strides should be the same and
+      // should be either 1 or 2
+      // Temporal stride can be anything.
+      (std::all_of(
+           conv_p.stride.begin() + SPATIAL_DIM - 2,
+           conv_p.stride.end(),
+           std::bind(areEqual, std::placeholders::_1, 1)) ||
+       std::all_of(
+           conv_p.stride.begin() + SPATIAL_DIM - 2,
+           conv_p.stride.end(),
+           std::bind(areEqual, std::placeholders::_1, 2))) &&
+
+      // Height and Width should be both even or both odd
+      // and at least as big as filter size
+      (conv_p.IN_DIM[SPATIAL_DIM - 2] % 2 ==
+       conv_p.IN_DIM[SPATIAL_DIM - 1] % 2) &&
+      (conv_p.IN_DIM[SPATIAL_DIM - 2] >= conv_p.K[SPATIAL_DIM - 2]) &&
+      (conv_p.IN_DIM[SPATIAL_DIM - 1] >= conv_p.K[SPATIAL_DIM - 1]) &&
+
+      (conv_p.OUT_DIM[SPATIAL_DIM - 2] >= conv_p.K[SPATIAL_DIM - 2]) &&
+      (conv_p.OUT_DIM[SPATIAL_DIM - 1] >= conv_p.K[SPATIAL_DIM - 1]);
 }
 
 template FBGEMM_API bool fbgemmOptimizedGConv(const conv_param_t<2>& conv_p);
