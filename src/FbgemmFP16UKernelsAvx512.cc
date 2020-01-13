@@ -133,7 +133,7 @@ gemmkernel_1x2_Avx512_fp16_fA0fB0fC0(GemmParamsFP16* gp) {
 }
 void NOINLINE
 gemmkernel_2x2_Avx512_fp16_fA0fB0fC0(GemmParamsFP16* gp) {
-  asm volatile(
+  //asm volatile(
 #if !defined(__clang__)
       "mov r14, %[gp]\t\n"
 #else
@@ -164,8 +164,13 @@ gemmkernel_2x2_Avx512_fp16_fA0fB0fC0(GemmParamsFP16* gp) {
       "mov rax, r9\t\n"
       "mov rcx, r12\t\n"
 
-      "mov rbx, 0\t\n"
-      "loop_outter%=:\t\n"
+    for (int ii = 0; ii < gp->b_block_cols; ii++) {
+      if(gp->beta != 0) {
+
+      }
+    }
+      //"mov rbx, 0\t\n"
+      //"loop_outter%=:\t\n"
       "mov r14, r8\t\n"
       "vbroadcastss zmm31,DWORD PTR [r15]\t\n"
       "vcvtph2ps zmm5,YMMWORD PTR [r10 + 0]\t\n"
@@ -215,23 +220,23 @@ gemmkernel_2x2_Avx512_fp16_fA0fB0fC0(GemmParamsFP16* gp) {
       "add r10,64\t\n"
       "jmp dump_C%=\t\n"
 
-      "loop_inner%=:\t\n"
+                  "loop_inner%=:\t\n"
 
-      "vmovaps zmm5,zmm31\t\n"
-      "vcvtph2ps zmm6,YMMWORD PTR [r10 + 32]\t\n"
-      "vcvtph2ps zmm31,YMMWORD PTR [r10 + 64]\t\n"
-      "vbroadcastss zmm4,DWORD PTR [r9+0]\t\n"
-      "vfmadd231ps zmm0,zmm5,zmm4\t\n"
-      "vfmadd231ps zmm1,zmm6,zmm4\t\n"
-      "vbroadcastss zmm4,DWORD PTR [r9+4]\t\n"
-      "vfmadd231ps zmm2,zmm5,zmm4\t\n"
-      "vfmadd231ps zmm3,zmm6,zmm4\t\n"
+                  "vmovaps zmm5,zmm31\t\n"
+                  "vcvtph2ps zmm6,YMMWORD PTR [r10 + 32]\t\n"
+                  "vcvtph2ps zmm31,YMMWORD PTR [r10 + 64]\t\n"
+                  "vbroadcastss zmm4,DWORD PTR [r9+0]\t\n"
+                  "vfmadd231ps zmm0,zmm5,zmm4\t\n"
+                  "vfmadd231ps zmm1,zmm6,zmm4\t\n"
+                  "vbroadcastss zmm4,DWORD PTR [r9+4]\t\n"
+                  "vfmadd231ps zmm2,zmm5,zmm4\t\n"
+                  "vfmadd231ps zmm3,zmm6,zmm4\t\n"
 
-      "next_inner%=:\t\n"
-      "add r9,8\t\n"
-      "add r10,64\t\n"
-      "dec r14\t\n"
-      "jnz loop_inner%=\t\n"
+                  "next_inner%=:\t\n"
+                  "add r9,8\t\n"
+                  "add r10,64\t\n"
+                  "dec r14\t\n"
+                  "jnz loop_inner%=\t\n"
 
       "vmovaps zmm5,zmm31\t\n"
       "vcvtph2ps zmm6,YMMWORD PTR [r10 + 32]\t\n"
@@ -255,25 +260,26 @@ gemmkernel_2x2_Avx512_fp16_fA0fB0fC0(GemmParamsFP16* gp) {
       "add rcx, 128\t\n"
       "mov r12, rcx\t\n"
       "mov r9, rax\t\n"
-      "inc rbx\t\n"
-      "cmp rbx, rdi\t\n"
-      "jl loop_outter%=\t\n"
-      :
-      : [gp] "rm"(gp)
-      : "r8",
-        "r9",
-        "r10",
-        "r11",
-        "r13",
-        "r14",
-        "rax",
-        "rcx",
-        "rsi",
-        "rdi",
-        "rbx",
-        "r12",
-        "r15",
-        "memory");
+      //"inc rbx\t\n"
+      //"cmp rbx, rdi\t\n"
+      //"jl loop_outter%=\t\n"
+      //:
+      //: [gp] "rm"(gp)
+      //: "r8",
+      //  "r9",
+      //  "r10",
+      //  "r11",
+      //  "r13",
+      //  "r14",
+      //  "rax",
+      //  "rcx",
+      //  "rsi",
+      //  "rdi",
+      //  "rbx",
+      //  "r12",
+      //  "r15",
+      //  "memory"
+        //);
 }
 void NOINLINE
 gemmkernel_3x2_Avx512_fp16_fA0fB0fC0(GemmParamsFP16* gp) {
