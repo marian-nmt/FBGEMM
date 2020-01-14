@@ -102,10 +102,18 @@ void CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::storeCRegs<
         a->vpaddd(
             CRegs(i * colRegs + j),
             CRegs(i * colRegs + j),
+#ifdef _MSC_VER
+            x86::dword_ptr(a->gpz(9), C_Offset, 0, j * VLEN_ * sizeof(int8_t)));
+#else
             x86::dword_ptr(a->zcx(), C_Offset, 0, j * VLEN_ * sizeof(int8_t)));
+#endif
       }
       a->vmovups(
+#ifdef _MSC_VER
+          x86::dword_ptr(a->gpz(9), C_Offset, 0, j * VLEN_ * sizeof(int8_t)),
+#else
           x86::dword_ptr(a->zcx(), C_Offset, 0, j * VLEN_ * sizeof(int8_t)),
+#endif
           CRegs(i * colRegs + j));
     }
   }
@@ -202,12 +210,21 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx2>(
     int mRegBlocksRem = mc % mRegBlockSize;
 
     // arguments to the function created
+#ifdef _MSC_VER
+    x86::Gp buffer_A = a->zcx();
+    x86::Gp buffer_B = a->zdx();
+    x86::Gp B_pf = a->gpz(8);
+    x86::Gp CBase = a->gpz(9);
+    x86::Gp kSize = a->zdi();
+    x86::Gp ldcReg = a->zsi();
+#else
     x86::Gp buffer_A = a->zdi();
     x86::Gp buffer_B = a->zsi();
     x86::Gp B_pf = a->zdx();
     x86::Gp CBase = a->zcx();
     x86::Gp kSize = a->gpz(8);
     x86::Gp ldcReg = a->gpz(9);
+#endif
 
     asmjit::FuncDetail func;
     func.init(asmjit::FuncSignatureT<

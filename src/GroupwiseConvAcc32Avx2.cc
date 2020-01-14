@@ -180,12 +180,21 @@ jit_conv_kernel_fp GenConvKernel<SPATIAL_DIM, inst_set_t::avx2>::getOrCreate() {
 #endif
 
   // arguments to the function created
+#ifdef _MSC_VER
+  in_acts_R_ = a->zcx();
+  wghts_R_ = a->zdx();
+  out_acts_R_ = a->gpz(8);
+  a_zero_pt_R_ = a->gpz(9);
+  H_start_R_ = a->zdi();
+  H_end_R_ = a->zsi();
+#else
   in_acts_R_ = a->zdi();
   wghts_R_ = a->zsi();
   out_acts_R_ = a->zdx();
   a_zero_pt_R_ = a->zcx();
   H_start_R_ = a->gpz(8);
   H_end_R_ = a->gpz(9);
+#endif
   W_R_ = a->gpz(10);
   row_offset_R_ = a->gpz(11);
 
