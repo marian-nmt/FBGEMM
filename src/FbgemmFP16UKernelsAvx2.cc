@@ -8,6 +8,22 @@
 
 namespace fbgemm {
 
+#if 1
+void NOINLINE
+gemmkernel_1x2_Avx2_fp16_fA0fB0fC0(GemmParamsFP16* gp) {}
+void NOINLINE
+gemmkernel_2x2_Avx2_fp16_fA0fB0fC0(GemmParamsFP16* gp) {}
+void NOINLINE
+gemmkernel_3x2_Avx2_fp16_fA0fB0fC0(GemmParamsFP16* gp) {}
+void NOINLINE
+gemmkernel_4x2_Avx2_fp16_fA0fB0fC0(GemmParamsFP16* gp) {}
+void NOINLINE
+gemmkernel_5x2_Avx2_fp16_fA0fB0fC0(GemmParamsFP16* gp) {}
+void NOINLINE
+gemmkernel_6x2_Avx2_fp16_fA0fB0fC0(GemmParamsFP16* gp) {}
+
+
+#else
 void NOINLINE
 gemmkernel_1x2_Avx2_fp16_fA0fB0fC0(GemmParamsFP16* gp) {
   asm volatile(
@@ -1041,5 +1057,5 @@ gemmkernel_6x2_Avx2_fp16_fA0fB0fC0(GemmParamsFP16* gp) {
         "r15",
         "memory");
 }
-
+#endif
 } // namespace fbgemm
