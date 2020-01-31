@@ -32,40 +32,41 @@ void performance_test() {
   vector<vector<int>> shapes = {
     // NOTE: clang-format wants to use a different formatting but the current
     // formatting should be easier to read.
-    {1, 128, 512},
-    {1, 1024, 256},
-    {1, 2048, 512},
-    {1, 4096, 1024},
+    {8, 512, 2048}, {1, 512, 2048}
+    // {1, 128, 512},
+    // {1, 1024, 256},
+    // {1, 2048, 512},
+    // {1, 4096, 1024},
 
-    {6, 256, 1024},
-    {6, 256, 2048},
-    {6, 512, 512},
-    {6, 1024, 256},
-    {6, 2048, 256},
-    {6, 2048, 512},
-    {6, 4096, 256},
-    {6, 4096, 1024},
-    {6, 4096, 2048},
+    // {6, 256, 1024},
+    // {6, 256, 2048},
+    // {6, 512, 512},
+    // {6, 1024, 256},
+    // {6, 2048, 256},
+    // {6, 2048, 512},
+    // {6, 4096, 256},
+    // {6, 4096, 1024},
+    // {6, 4096, 2048},
 
-    {10, 2048, 256},
-    {10, 4096, 1024},
+    // {10, 2048, 256},
+    // {10, 4096, 1024},
 
-    {20, 2048, 256},
-    {20, 4096, 1024},
+    // {20, 2048, 256},
+    // {20, 4096, 1024},
 
-    {102, 1024, 512},
-    {102, 2323, 256},
-    {102, 512, 256},
+    // {102, 1024, 512},
+    // {102, 2323, 256},
+    // {102, 512, 256},
 
-    {1, 800, 3200},
-    {1, 800, 8000},
+    // {1, 800, 3200},
+    // {1, 800, 8000},
 
-    {16, 256, 1500},
-    {16, 256, 1567},
-    {1, 128, 2876},
-    {16, 128, 1567},
-    {1, 128, 2722},
-    {16, 256, 512},
+    // {16, 256, 1500},
+    // {16, 256, 1567},
+    // {1, 128, 2876},
+    // {16, 128, 1567},
+    // {1, 128, 2722},
+    // {16, 256, 512},
   };
   // clang-format on
   bool flush = true;
@@ -93,6 +94,25 @@ void performance_test() {
   cout << setw(7) << "M, " << setw(7) << "N, " << setw(7) << "K, " << setw(18)
        << "Type, " << setw(5) << "GOPS" << endl;
 #endif
+
+fbgemm::BlockingFactors Packed8Avx2BlockingFactors = {
+    PackingTraits<int8_t, int32_t, inst_set_t::avx2>::MR,
+    PackingTraits<int8_t, int32_t, inst_set_t::avx2>::NR,
+    PackingTraits<int8_t, int32_t, inst_set_t::avx2>::NR_MIN,
+    PackingTraits<int8_t, int32_t, inst_set_t::avx2>::ROW_INTERLEAVE,
+    PackingTraits<int8_t, int32_t, inst_set_t::avx2>::MCB,
+    PackingTraits<int8_t, int32_t, inst_set_t::avx2>::KCB,
+    PackingTraits<int8_t, int32_t, inst_set_t::avx2>::NCB
+};
+// fbgemm::BlockingFactors Packed8Avx512BlockingFactors = {
+//     PackingTraits<int8_t, int32_t, inst_set_t::avx512>::MR,
+//     PackingTraits<int8_t, int32_t, inst_set_t::avx512>::NR,
+//     PackingTraits<int8_t, int32_t, inst_set_t::avx512>::NR_MIN,
+//     PackingTraits<int8_t, int32_t, inst_set_t::avx512>::ROW_INTERLEAVE,
+//     PackingTraits<int8_t, int32_t, inst_set_t::avx512>::MCB,
+//     PackingTraits<int8_t, int32_t, inst_set_t::avx512>::KCB,
+//     PackingTraits<int8_t, int32_t, inst_set_t::avx512>::NCB
+// };
 
   chrono::time_point<chrono::high_resolution_clock> start, end;
   for (auto shape : shapes) {
@@ -201,10 +221,10 @@ void performance_test() {
         Aint8_scale,
         Aint8_zero_point,
         1, /*groups*/
-        row_offset_buf.data());
+        row_offset_buf.data(), &Packed8Avx2BlockingFactors);
 
     PackBMatrix<int8_t> packedBN(
-        matrix_op_t::NoTranspose, k, n, Bint8.data(), n, nullptr, 1);
+        matrix_op_t::NoTranspose, k, n, Bint8.data(), n, nullptr, 1, &Packed8Avx2BlockingFactors);
 
     DoNothing<float, float> doNothingObj{};
     ReQuantizeForFloat<false> outputProcObj(
@@ -247,7 +267,8 @@ void performance_test() {
           n,
           outputProcObj,
           0,
-          1);
+          1,
+          &Packed8Avx2BlockingFactors);
       end = chrono::high_resolution_clock::now();
 
       if (i >= NWARMUP) {
