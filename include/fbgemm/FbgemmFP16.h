@@ -251,7 +251,7 @@ class PackedGemmMatrixFP16 {
       const float beta,
       float* C,
       int thread_id,
-      int num_threads);
+      int num_threads, bool sparse);
 };
 
 /**
@@ -265,5 +265,5 @@ extern void cblas_gemm_compute(
     const float beta,
     float* C,
     int thread_id = 0,
-    int num_threads = 1);
+    int num_threads = 1, bool sparse = false);
 }; // namespace fbgemm

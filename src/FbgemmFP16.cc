@@ -48,6 +48,16 @@ struct KernelInfo {
       gemmkernel_6x2_AVX2_fA0fB0fC0
   };
 
+    static constexpr knl_ptr kernel_sparse[7] = {
+      nullptr,
+      gemmkernel_1x2_AVX2_fA0fB0fC0_sparse,
+      gemmkernel_2x2_AVX2_fA0fB0fC0_sparse,
+      gemmkernel_3x2_AVX2_fA0fB0fC0_sparse,
+      gemmkernel_4x2_AVX2_fA0fB0fC0_sparse,
+      gemmkernel_5x2_AVX2_fA0fB0fC0_sparse,
+      gemmkernel_6x2_AVX2_fA0fB0fC0_sparse
+  };
+
   // autotuned kernel splits for various cases m = 1:mb_max
   // may need re-autotuning for new uarch
   // clang-format off
@@ -179,6 +189,7 @@ struct KernelInfo {
   // clang-format on
 };
 constexpr KernelInfo::knl_ptr KernelInfo::kernel[7];;
+constexpr KernelInfo::knl_ptr KernelInfo::kernel_sparse[7];;
 constexpr int KernelInfo::partition[121][2][2];
 
 // autotuned kernel splits for various cases m = 1:mb_max
@@ -190,7 +201,8 @@ void cblas_gemm_compute(
     const float beta,
     float* C,
     int thread_id,
-    int num_threads) {
+    int num_threads,
+    bool sparse) {
   // ground truth
   assert(cpuinfo_initialize());
   assert(cpuinfo_has_x86_fma3());
@@ -271,7 +283,10 @@ void cblas_gemm_compute(
             gp.C += Bp.blockColSize() * jb_begin;
             gp.b_block_cols = jb_end - jb_begin;
             if (gp.b_block_cols) {
-              KernelInfo::kernel[kernel_nrows](&gp);
+              if(sparse)
+                KernelInfo::kernel_sparse[kernel_nrows](&gp);
+              else
+                KernelInfo::kernel[kernel_nrows](&gp);
             }
           } else {
             int last_blk_col = nbcol * Bp.blockColSize();
@@ -283,7 +298,10 @@ void cblas_gemm_compute(
               gp.C += Bp.blockColSize() * jb_begin;
               gp.b_block_cols = jb_end - jb_begin;
               if (gp.b_block_cols) {
-                KernelInfo::kernel[kernel_nrows](&gp);
+                if(sparse)
+                  KernelInfo::kernel_sparse[kernel_nrows](&gp);
+                else
+                  KernelInfo::kernel[kernel_nrows](&gp);
               }
             }
 
@@ -297,7 +315,10 @@ void cblas_gemm_compute(
                 gp.B = &(Bp(k_ind, last_blk_col));
                 gp.C = &C[m2 * ldc + last_blk_col];
                 gp.b_block_cols = 1;
-                KernelInfo::kernel[kernel_nrows](&gp);
+                if(sparse)
+                  KernelInfo::kernel_sparse[kernel_nrows](&gp);
+                else
+                  KernelInfo::kernel[kernel_nrows](&gp);
               } else {
                 // small temporary buffer: the size should be larger than the
                 // required kernel_nrow x kernel_ncols elements computed in the
@@ -309,8 +330,11 @@ void cblas_gemm_compute(
                 gp.C = c_tmp;
                 gp.ldc = kernel_ncols * sizeof(C[0]);
                 gp.b_block_cols = 1;
-                KernelInfo::kernel[kernel_nrows](&gp);
-                for (int i = 0; i < kernel_nrows; i++) {
+                if(sparse)
+                  KernelInfo::kernel_sparse[kernel_nrows](&gp);
+                else
+                  KernelInfo::kernel[kernel_nrows](&gp);
+                for(int i = 0; i < kernel_nrows; i++) {
                   // Todo: use assembly
                   for (int j = last_blk_col; j < n; j++) {
                     assert(

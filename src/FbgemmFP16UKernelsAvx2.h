@@ -35,6 +35,12 @@ void NOINLINE_ATTR gemmkernel_3x2_AVX2_fA0fB0fC0(GemmParams* gp);
 void NOINLINE_ATTR gemmkernel_4x2_AVX2_fA0fB0fC0(GemmParams* gp);
 void NOINLINE_ATTR gemmkernel_5x2_AVX2_fA0fB0fC0(GemmParams* gp);
 void NOINLINE_ATTR gemmkernel_6x2_AVX2_fA0fB0fC0(GemmParams* gp);
+void NOINLINE_ATTR gemmkernel_1x2_AVX2_fA0fB0fC0_sparse(GemmParams* gp);
+void NOINLINE_ATTR gemmkernel_2x2_AVX2_fA0fB0fC0_sparse(GemmParams* gp);
+void NOINLINE_ATTR gemmkernel_3x2_AVX2_fA0fB0fC0_sparse(GemmParams* gp);
+void NOINLINE_ATTR gemmkernel_4x2_AVX2_fA0fB0fC0_sparse(GemmParams* gp);
+void NOINLINE_ATTR gemmkernel_5x2_AVX2_fA0fB0fC0_sparse(GemmParams* gp);
+void NOINLINE_ATTR gemmkernel_6x2_AVX2_fA0fB0fC0_sparse(GemmParams* gp);
 typedef void (*funcptr_fp16)(GemmParams* gp);
 ;
 
