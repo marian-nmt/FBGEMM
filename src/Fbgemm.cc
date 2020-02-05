@@ -37,7 +37,7 @@ void fbgemmPacked(
     const processOutputType& outProcess,
     int thread_id,
     int num_threads,
-    const BlockingFactors* blocking_params) {
+    const BlockingFactors* blocking_params, bool sparse) {
   static_assert(
       std::is_same<
           typename packingAMatrix::accType,
@@ -190,7 +190,7 @@ void fbgemmPacked(
         t_start = std::chrono::high_resolution_clock::now();
 #endif
 
-        exeKernelObj.execute(g * kBlocks + kb);
+        exeKernelObj.execute(g * kBlocks + kb, sparse);
 
 #ifdef FBGEMM_MEASURE_TIME_BREAKDOWN
         t_end = std::chrono::high_resolution_clock::now();
@@ -247,7 +247,8 @@ bool fbgemmSupportedCPU() {
       const ReQuantizeOutput<RELU, Q_GRAN, BIAS_TYPE>& outProcess,  \
       int thread_id,                                                \
       int num_threads,                                              \
-      const BlockingFactors* blocking_params);
+      const BlockingFactors* blocking_params,                       \
+                             bool sparse);
 
 #define INSTANTIATE_BIAS_T(PACK_A, ACC_T, RELU, Q_GRAN) \
   INSTANTIATE_BASE(PACK_A, ACC_T, RELU, Q_GRAN, float); \
@@ -288,7 +289,8 @@ INSTANTIATE_ACC_T(PackAWithRowOffset);
       const ReQuantizeOutput<RELU, Q_GRAN, BIAS_TYPE>& outProcess,    \
       int thread_id,                                                  \
       int num_threads,                                                \
-      const BlockingFactors* blocking_params);
+      const BlockingFactors* blocking_params,                                          \
+      bool sparse);
 
 #define INSTANTIATE_BIAS_T(ACC_T, RELU, SPATIAL_DIM, Q_GRAN) \
   INSTANTIATE_BASE(ACC_T, RELU, SPATIAL_DIM, Q_GRAN, float); \
@@ -331,7 +333,8 @@ INSTANTIATE_RELU(int16_t);
       const ReQuantizeForFloat<RELU, Q_GRAN>& outProcess,               \
       int thread_id,                                                    \
       int num_threads,                                                  \
-      const BlockingFactors* blocking_params);
+      const BlockingFactors* blocking_params,                           \
+                             bool sparse);
 
 #define INSTANTIATE_Q_GRANS(PACK_A, RELU)                          \
   INSTANTIATE_BASE(PACK_A, RELU, QuantizationGranularity::TENSOR); \
@@ -362,7 +365,7 @@ INSTANTIATE_RELU(PackAWithQuantRowOffset);
       const ReQuantizeForFloat<RELU, Q_GRAN>& outProcess,           \
       int thread_id,                                                \
       int num_threads,                                              \
-      const BlockingFactors* blocking_params);
+      const BlockingFactors* blocking_params, bool sparse);
 
 #define INSTANTIATE_Q_GRANS(ACC_T, RELU, SPATIAL_DIM)                          \
   INSTANTIATE_BASE(ACC_T, RELU, SPATIAL_DIM, QuantizationGranularity::TENSOR); \
@@ -395,7 +398,8 @@ template void fbgemmPacked(
     const ReQuantizeForFloat<false>& outProcess,
     int thread_id,
     int num_threads,
-    const BlockingFactors* blocking_params);
+    const BlockingFactors* blocking_params,
+    bool sparse);
 
 ////////////////////////////////////////////////////////////////////////////////
 // DoSpmdmOnInpBuffer
@@ -412,7 +416,8 @@ template void fbgemmPacked(
           ReQuantizeOutput<RELU, Q_GRAN>>& outProcess,                  \
       int thread_id,                                                    \
       int num_threads,                                                  \
-      const BlockingFactors* blocking_params);
+      const BlockingFactors* blocking_params,                                                 \
+      bool sparse);
 
 #define INSTANTIATE_Q_GRANS(PACK_A, RELU)                          \
   INSTANTIATE_BASE(PACK_A, RELU, QuantizationGranularity::TENSOR); \
@@ -443,7 +448,8 @@ INSTANTIATE_RELU(PackAWithRowOffset);
           ReQuantizeOutput<RELU, Q_GRAN>>& outProcess,                        \
       int thread_id,                                                          \
       int num_threads,                                                        \
-      const BlockingFactors* blocking_params);
+      const BlockingFactors* blocking_params,                                                 \
+      bool sparse);
 
 #define INSTANTIATE_Q_GRANS(RELU)                          \
   INSTANTIATE_BASE(RELU, QuantizationGranularity::TENSOR); \
@@ -466,7 +472,8 @@ template void fbgemmPacked(
         outProcess,
     int thread_id,
     int num_threads,
-    const BlockingFactors* blocking_params);
+    const BlockingFactors* blocking_params,
+    bool sparse);
 
 ////////////////////////////////////////////////////////////////////////////////
 // memCopy
@@ -480,7 +487,8 @@ template void fbgemmPacked(
       const memCopy<>& outProcess,                                  \
       int thread_id,                                                \
       int num_threads,                                              \
-      const BlockingFactors* blocking_params);
+      const BlockingFactors* blocking_params,                       \
+                             bool sparse);
 
 #define INSTANTIATE_ACC_T(PACK_A)   \
   INSTANTIATE_BASE(PACK_A, int32_t) \
@@ -505,7 +513,8 @@ INSTANTIATE_ACC_T(PackAWithRowOffset);
       const memCopy<>& outProcess,                                  \
       int thread_id,                                                \
       int num_threads,                                              \
-      const BlockingFactors* blocking_params);
+      const BlockingFactors* blocking_params,                                          \
+      bool sparse);
 
 #define INSTANTIATE_SPATIAL_DIM(ACC_T) \
   INSTANTIATE_BASE(ACC_T, 2);          \
@@ -527,7 +536,8 @@ template void fbgemmPacked(
     const memCopy<>& outProcess,
     int thread_id,
     int num_threads,
-    const BlockingFactors* blocking_params);
+    const BlockingFactors* blocking_params,
+    bool sparse);
 
 template void fbgemmPacked(
     PackMatrix<PackAMatrix<uint8_t, int16_t>, uint8_t, int16_t>& packA,
@@ -538,6 +548,7 @@ template void fbgemmPacked(
     const DoNothing<int32_t, int32_t>& outProcess,
     int thread_id,
     int num_threads,
-    const BlockingFactors* blocking_params);
+                           const BlockingFactors* blocking_params,
+                           bool sparse);
 
 } // namespace fbgemm

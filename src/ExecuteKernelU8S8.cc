@@ -34,7 +34,7 @@ ExecuteKernel<
         const processOutputType& outputProcess,
         int thread_id,
         int num_threads,
-        const BlockingFactors* params)
+        const BlockingFactors* params, bool sparse)
     : CodeGenBase<uint8_t, int8_t, int32_t, typename packingAMatrix::accType>(
           params),
       packedA_(packA),
@@ -111,7 +111,7 @@ void ExecuteKernel<
     packingAMatrix,
     PackBMatrix<int8_t, typename packingAMatrix::accType>,
     cT,
-    processOutputType>::execute(int kBlock) {
+    processOutputType>::execute(int kBlock, bool sparse) {
   // packedA_.printPackedMatrix("packedA from kernel");
   // packedB_.printPackedMatrix("packedB from kernel");
 
@@ -140,15 +140,13 @@ void ExecuteKernel<
           accum,
           packed_rows_A,
           packedB_.blockColSize(),
-          packedA_.numPackedCols(),
-          nbSize_);
+          packedA_.numPackedCols(), sparse);
     } else {
       fn = BaseType::template getOrCreate<inst_set_t::avx512_vnni>(
           accum,
           packed_rows_A,
           packedB_.blockColSize(),
-          packedA_.numPackedCols(),
-          nbSize_);
+          packedA_.numPackedCols(), sparse);
     }
   } else if (fbgemmHasAvx512Support()) {
     fn = BaseType::template getOrCreate<inst_set_t::avx512>(
@@ -156,14 +154,13 @@ void ExecuteKernel<
         packed_rows_A,
         packedB_.blockColSize(),
         packedA_.numPackedCols(),
-        nbSize_);
+        sparse);
   } else if (fbgemmHasAvx2Support()) {
     fn = BaseType::template getOrCreate<inst_set_t::avx2>(
         accum,
         packed_rows_A,
         packedB_.blockColSize(),
-        packedA_.numPackedCols(),
-        nbSize_);
+        packedA_.numPackedCols(), sparse);
   } else {
     // TODO: Have default slower path
     assert(0 && "unsupported architecture");
@@ -185,7 +182,7 @@ void ExecuteKernel<
               accum, packed_rows_A, nc, packedA_.numPackedCols(), nbSize_);
         } else if (fbgemmHasAvx512Support()) {
           fn = BaseType::template getOrCreate<inst_set_t::avx512>(
-              accum, packed_rows_A, nc, packedA_.numPackedCols(), nbSize_);
+              accum, packed_rows_A, nc, packedA_.numPackedCols(), sparse);
         } else if (fbgemmHasAvx2Support()) {
           fn = BaseType::template getOrCreate<inst_set_t::avx2>(
               accum, packed_rows_A, nc, packedA_.numPackedCols(), nbSize_);

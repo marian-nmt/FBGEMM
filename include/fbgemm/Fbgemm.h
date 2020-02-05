@@ -1390,7 +1390,7 @@ FBGEMM_API void fbgemmPacked(
     const processOutputType& outProcess,
     int thread_id,
     int num_threads,
-    const BlockingFactors* blocking_params = nullptr);
+    const BlockingFactors* blocking_params = nullptr, bool sparse = false);
 
 /**
  * @brief Perform small-channels-per-group groupwise convolution

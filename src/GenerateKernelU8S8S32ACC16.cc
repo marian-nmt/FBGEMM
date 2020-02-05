@@ -49,7 +49,7 @@ void CodeGenBase<uint8_t, int8_t, int32_t, int16_t>::genComputeBlock<
     int rowRegs,
     int colRegs,
     int lda,
-    int leadingDimCReg) {
+    int leadingDimCReg, bool sparse) {
   // used for matrix A
   x86::Ymm AReg = x86::ymm12;
 
@@ -132,7 +132,7 @@ CodeGenBase<uint8_t, int8_t, int32_t, int16_t>::getOrCreate<inst_set_t::avx2>(
     int32_t nc,
     int32_t kc,
     int32_t /* unused */) {
-  std::tuple<bool, int, int, int, int, int, int, int> kernelSig;
+  std::tuple<bool, int, int, bool, int, int, int, int, int> kernelSig;
   int kBlock;
   int nBlock;
   int mRegBlockSize;
@@ -162,6 +162,7 @@ CodeGenBase<uint8_t, int8_t, int32_t, int16_t>::getOrCreate<inst_set_t::avx2>(
       accum,
       mc,
       nc,
+    false,
       nBlock,
       kBlock,
       mRegBlockSize,

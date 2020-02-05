@@ -49,7 +49,7 @@ void CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::genComputeBlock<
     int rowRegs,
     int colRegs,
     int lda,
-    int leadingDimCReg) {
+    int leadingDimCReg, bool sparse) {
   // used for matrix A
   x86::Zmm AReg = x86::zmm31;
 
@@ -62,20 +62,47 @@ void CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::genComputeBlock<
   // temporary register
   x86::Zmm res1 = x86::zmm28;
 
+  //std::cout << "sparse: " << sparse << std::endl;
+  x86::Gp zero = a->zbx();
+  x86::Gp bloaded = a->zax();
+
   using CRegs = x86::Zmm;
   for (int j = 0; j < colRegs; ++j) {
-    // load B
-    a->vmovaps(BReg, x86::dword_ptr(buffer_B, j * VLEN_ * sizeof(int8_t)));
-    // load A, broadcast and fmas
-    for (int i = 0; i < rowRegs; ++i) {
-      a->vpbroadcastd(
-          AReg, x86::dword_ptr(buffer_A, (i * lda) * sizeof(uint8_t)));
-      a->vpmaddubsw(res1, AReg, BReg);
-      a->vpmaddwd(res1, oneReg, res1);
-      a->vpaddd(
-          CRegs(i * leadingDimCReg + j),
-          res1,
-          CRegs(i * leadingDimCReg + j));
+    if(sparse) {
+      a->mov(bloaded, 0);
+      for(int i = 0; i < rowRegs; ++i) {
+          asmjit::Label SkipFma = a->newLabel();
+          asmjit::Label SkipBload = a->newLabel();
+          a->mov(zero, x86::dword_ptr(buffer_A, (i * lda) * sizeof(uint8_t)));
+          a->test(zero, zero);
+          a->je(SkipFma);
+
+          a->cmp(bloaded, 0);
+          a->jne(SkipBload);
+          // load B
+          a->vmovaps(BReg, x86::dword_ptr(buffer_B, j * VLEN_ * sizeof(int8_t)));
+          a->inc(bloaded);
+          a->bind(SkipBload);
+
+          a->vpbroadcastd(AReg, x86::dword_ptr(buffer_A, (i * lda) * sizeof(uint8_t)));
+          a->vpmaddubsw(res1, AReg, BReg);
+          a->vpmaddwd(res1, oneReg, res1);
+          a->vpaddd(CRegs(i * leadingDimCReg + j), res1, CRegs(i * leadingDimCReg + j));
+
+          a->bind(SkipFma);
+        // load A, broadcast and fmas
+        //  //std::cout << "Sparse: " << std::endl;
+      }
+    } else {
+      // load B
+      a->vmovaps(BReg, x86::dword_ptr(buffer_B, j * VLEN_ * sizeof(int8_t)));
+      // load A, broadcast and fmas
+      for(int i = 0; i < rowRegs; ++i) {
+        a->vpbroadcastd(AReg, x86::dword_ptr(buffer_A, (i * lda) * sizeof(uint8_t)));
+        a->vpmaddubsw(res1, AReg, BReg);
+        a->vpmaddwd(res1, oneReg, res1);
+        a->vpaddd(CRegs(i * leadingDimCReg + j), res1, CRegs(i * leadingDimCReg + j));
+      }
     }
     a->prefetcht0(x86::dword_ptr(B_pf, j * VLEN_ * sizeof(int8_t)));
   }
@@ -137,8 +164,9 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx512>(
     int32_t mc,
     int32_t nc,
     int32_t kc,
-    int32_t /* unused */) {
-  std::tuple<bool, int, int, int, int, int, int, int> kernelSig;
+    int32_t sparse/* unused */) {
+  //std::cout << "sparse outer: " << sparse << std::endl;
+  std::tuple<bool, int, int, bool, int, int, int, int, int> kernelSig;
   int kBlock;
   int nBlock;
   int mRegBlockSize;
@@ -168,6 +196,7 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx512>(
       accum,
       mc,
       nc,
+      (bool)sparse,
       nBlock,
       kBlock,
       mRegBlockSize,
@@ -295,7 +324,7 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx512>(
       a->add(kIdx, static_cast<asmjit::Imm>(row_interleave));
 
       genComputeBlock<inst_set_t::avx512>(a, buffer_A, buffer_B, B_pf, rowRegs,
-                                          colRegs, kBlock, colRegs);
+                                          colRegs, kBlock, colRegs, sparse);
 
       // update buffer_A address for next k iteration
       a->add(buffer_A,
@@ -375,7 +404,7 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx512>(
       a->add(kIdx, static_cast<asmjit::Imm>(row_interleave));
 
       genComputeBlock<inst_set_t::avx512>(a, buffer_A, buffer_B, B_pf, rowRegs,
-                                          colRegs, kBlock, colRegs);
+                                          colRegs, kBlock, colRegs, sparse);
 
       // update buffer_A address for next k iteration
       a->add(buffer_A,

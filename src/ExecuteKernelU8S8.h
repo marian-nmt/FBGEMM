@@ -45,8 +45,8 @@ class ExecuteKernel<
       const processOutputType& outputProcess,
       int thread_id,
       int num_threads,
-      const BlockingFactors* params = nullptr);
-  void execute(int kBlock);
+      const BlockingFactors* params = nullptr, bool sparse = false);
+  void execute(int kBlock, bool sparse);
 
   ~ExecuteKernel() {
     delete[] C_tile_;
