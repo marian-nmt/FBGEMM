@@ -223,7 +223,7 @@ class PackedGemmMatrixFP16 {
   }
 
   int matSize() const {
-    return size_;
+    return (int)size_;
   }
   int numRows() const {
     return nrow_;

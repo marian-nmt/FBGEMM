@@ -318,7 +318,7 @@ static ALWAYS_INLINE void inner_prod_2d_packed_(
     std::int32_t* C,
     int remainder,
     std::int32_t* row_offsets) {
-  if (S == 3) {
+  //if constexpr (S == 3) {
     inner_prod_3x3_packed_<SUM_A, REMAINDER, PER_CHANNEL_QUANTIZATION>(
         H,
         W,
@@ -332,22 +332,22 @@ static ALWAYS_INLINE void inner_prod_2d_packed_(
         C,
         remainder,
         row_offsets);
-  } else {
-    assert(S == 5);
-    inner_prod_5x5_packed_<SUM_A, REMAINDER, PER_CHANNEL_QUANTIZATION>(
-        H,
-        W,
-        K,
-        h_in,
-        w_in,
-        A,
-        A_zero_point,
-        Bp,
-        B_zero_point,
-        C,
-        remainder,
-        row_offsets);
-  }
+  //} else {
+  //  assert(S == 5);
+  //  inner_prod_5x5_packed_<SUM_A, REMAINDER, PER_CHANNEL_QUANTIZATION>(
+  //      H,
+  //      W,
+  //      K,
+  //      h_in,
+  //      w_in,
+  //      A,
+  //      A_zero_point,
+  //      Bp,
+  //      B_zero_point,
+  //      C,
+  //      remainder,
+  //      row_offsets);
+  //}
 }
 
 template <

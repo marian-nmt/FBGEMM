@@ -13,7 +13,8 @@ namespace fbgemm {
 
 namespace internal {
 
-#ifdef __AVX2__
+//#ifdef __AVX2__
+#if 1
 // NOTE: Make sure every function defined in here has static linkage because
 // this header file is included by UtilsAvx512.cc compiled with -mavx512f option
 

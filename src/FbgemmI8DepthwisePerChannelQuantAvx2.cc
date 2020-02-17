@@ -4,7 +4,7 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree.
  */
-#define FBGEMM_EXPORTS
+//#define FBGEMM_EXPORTS
 #include "fbgemm/FbgemmI8DepthwiseAvx2.h"
 
 #include <stdexcept> // for logic_error

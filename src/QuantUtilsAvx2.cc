@@ -163,7 +163,8 @@ void FindMinMax(const float* a, float* min, float* max, int len) {
 ////////////////////////////////////////////////////////////////////////////////
 // Requantization (with floats)
 
-#ifdef __AVX2__
+//#ifdef __AVX2__
+#if 1
 void RequantizeAvx2(
     const int32_t* src,
     uint8_t* dst,

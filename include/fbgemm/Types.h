@@ -36,11 +36,11 @@ static inline float16 cpu_float2half_rn(float f) {
 
   // Get rid of +Inf/-Inf, +0/-0.
   if (u > 0x477fefff) {
-    ret = sign | 0x7c00U;
+    ret = (fbgemm::float16)(sign | 0x7c00U);
     return ret;
   }
   if (u < 0x33000001) {
-    ret = (sign | 0x0000);
+    ret = (fbgemm::float16)(sign | 0x0000);
     return ret;
   }
 
@@ -70,7 +70,7 @@ static inline float16 cpu_float2half_rn(float f) {
     }
   }
 
-  ret = (sign | (exponent << 10) | mantissa);
+  ret = (fbgemm::float16)(sign | (exponent << 10) | mantissa);
 
   return ret;
 }

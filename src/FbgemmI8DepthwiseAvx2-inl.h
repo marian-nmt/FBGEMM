@@ -230,7 +230,7 @@ static ALWAYS_INLINE void inner_prod_packed_(
   __m256i a_sum_temp[2] = {0, 0};
 
   int k = 0;
-  if (K >= 4) {
+  //if (K >= 4) {
     madd_epi16x4_packed<SUM_A>(
         a_v[0],
         a_v[1],
@@ -261,12 +261,12 @@ static ALWAYS_INLINE void inner_prod_packed_(
       c[2] = _mm256_add_epi32(c[2], c_temp[2]);
       c[3] = _mm256_add_epi32(c[3], c_temp[3]);
     }
-  } else {
-    c[0] = _mm256_setzero_si256();
-    c[1] = _mm256_setzero_si256();
-    c[2] = _mm256_setzero_si256();
-    c[3] = _mm256_setzero_si256();
-  }
+  //} else {
+  //  c[0] = _mm256_setzero_si256();
+  //  c[1] = _mm256_setzero_si256();
+  //  c[2] = _mm256_setzero_si256();
+  //  c[3] = _mm256_setzero_si256();
+  //}
 
   if (K - k == 3) {
     madd_epi16x3_packed<SUM_A>(
