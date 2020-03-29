@@ -19,6 +19,7 @@
 #include <mkl.h>
 #endif
 
+#define FBGEMM_EXPORTS
 #include "./BenchUtils.h"
 #include "fbgemm/Fbgemm.h"
 #include "src/RefImplementations.h"
