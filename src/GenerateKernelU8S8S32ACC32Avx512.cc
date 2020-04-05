@@ -63,26 +63,28 @@ void CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::genComputeBlock<
   x86::Zmm res1 = x86::zmm28;
 
   //std::cout << "sparse: " << sparse << std::endl;
-  x86::Gp zero = a->zax();
-  //x86::Gp bloaded = a->zax();
+  //x86::Gp zero = a->zax();
+  x86::Gp bloaded = a->zax();
 
   using CRegs = x86::Zmm;
   for (int j = 0; j < colRegs; ++j) {
     if(sparse) {
       // load B
-      a->vmovaps(BReg, x86::dword_ptr(buffer_B, j * VLEN_ * sizeof(int8_t)));
-      //a->mov(bloaded, 0);
+      //a->vmovaps(BReg, x86::dword_ptr(buffer_B, j * VLEN_ * sizeof(int8_t)));
+      a->mov(bloaded, 0);
       for(int i = 0; i < rowRegs; ++i) {
           asmjit::Label SkipFma = a->newLabel();
-          //asmjit::Label SkipBload = a->newLabel();
-          a->mov(zero, x86::dword_ptr(buffer_A, (i * lda) * sizeof(uint8_t)));
-          a->test(zero, zero);
+          asmjit::Label SkipBload = a->newLabel();
+          //a->mov(zero, x86::dword_ptr(buffer_A, (i * lda) * sizeof(uint8_t)));
+          //a->test(zero, zero);
+          a->cmp(x86::dword_ptr(buffer_A, (i * lda) * sizeof(uint8_t)), 0);
           a->je(SkipFma);
 
-          //a->cmp(bloaded, 0);
-          //a->jne(SkipBload);
-          //a->inc(bloaded);
-          //a->bind(SkipBload);
+          a->cmp(bloaded, 0);
+          a->jne(SkipBload);
+          a->vmovaps(BReg, x86::dword_ptr(buffer_B, j * VLEN_ * sizeof(int8_t)));
+          a->inc(bloaded);
+          a->bind(SkipBload);
 
           a->vpbroadcastd(AReg, x86::dword_ptr(buffer_A, (i * lda) * sizeof(uint8_t)));
           a->vpmaddubsw(res1, AReg, BReg);
