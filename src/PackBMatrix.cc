@@ -239,6 +239,64 @@ PackBMatrix<T, accT>::PackBMatrix(
 }
 
 template <typename T, typename accT>
+PackBMatrix<T, accT>::PackBMatrix(
+    matrix_op_t trans,
+    int32_t nRow,
+    int32_t nCol,
+    inpType* prepackedmat,
+    int32_t ld,
+    int groups,
+    const BlockingFactors* params)
+    : PackMatrix<PackBMatrix<T, accT>, T, accT>(
+          nRow,
+          nCol,
+          prepackedmat,
+          groups,
+          params),
+      trans_(trans),
+      smat_(nullptr),
+      ld_(ld) {
+  if (!cpuinfo_initialize()) {
+    throw std::runtime_error("Failed to initialize cpuinfo!");
+  }
+  if (params) {
+    if (fbgemmHasAvx512Support() || fbgemmHasAvx2Support()) {
+      BaseType::brow_ = params->KCB;
+      BaseType::bcol_ = params->NCB;
+      row_interleave_ = params->ROW_INTERLEAVE;
+    } else {
+      // TODO: Have default slower path
+      assert(0 && "unsupported architecure");
+    }
+  } else {
+    if (fbgemmHasAvx512Support()) {
+      BaseType::brow_ = PackingTraits<T, accT, inst_set_t::avx512>::KCB;
+      BaseType::bcol_ = PackingTraits<T, accT, inst_set_t::avx512>::NCB;
+      row_interleave_ =
+          PackingTraits<T, accT, inst_set_t::avx512>::ROW_INTERLEAVE;
+    } else if (fbgemmHasAvx2Support()) {
+      BaseType::brow_ = PackingTraits<T, accT, inst_set_t::avx2>::KCB;
+      BaseType::bcol_ = PackingTraits<T, accT, inst_set_t::avx2>::NCB;
+      row_interleave_ =
+          PackingTraits<T, accT, inst_set_t::avx2>::ROW_INTERLEAVE;
+    } else {
+      // Error
+      assert(0 && "unknown architecure");
+    }
+  }
+  if (BaseType::numRows() % groups != 0) {
+    throw std::runtime_error(
+        "groups = " + std::to_string(groups) +
+        " does not divide numRows = " + std::to_string(BaseType::numRows()));
+  }
+
+  // blocking for one group
+  block_type_t block{
+      0, BaseType::numRows() / BaseType::numGroups(), 0, BaseType::numCols() };
+  BaseType::packedBlock(block);
+}
+
+template <typename T, typename accT>
 void PackBMatrix<T, accT>::pack_unpack_(
     const block_type_t& block,
     T* unpack_buf,

@@ -412,6 +412,15 @@ class FBGEMM_API PackBMatrix final
       int groups = 1,
       const BlockingFactors* params = nullptr);
 
+  PackBMatrix(
+      matrix_op_t trans,
+      std::int32_t nRow,
+      std::int32_t nCol,
+      inpType* prepackedmat,
+      std::int32_t ld,
+      int groups = 1,
+      const BlockingFactors* params = nullptr);
+
   /**
    * Weight matrices are usually constant so worth pre-packing.
    */
