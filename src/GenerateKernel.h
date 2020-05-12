@@ -160,26 +160,26 @@ class CodeGenBase {
   int VLEN_; ///< Vector width in elements.
 
   static asmjit::JitRuntime &runtime() {
-    static thread_local asmjit::JitRuntime rt; //< JIT Runtime for asmjit,
+    static asmjit::JitRuntime rt; //< JIT Runtime for asmjit,
                                   // depents on other static
                                   // variables.  Required to prevent
                                   // initialization order fiasco
     return rt;
   }
 
-  //static std::mutex rtMutex_;    ///< Controll access to runtime;
+  static std::mutex rtMutex_;    ///< Controll access to runtime;
 
   // The hash depends on accumulate, mc, nc, ncb, kcb, nr, mr, nr_min
-  static thread_local CodeCache<std::tuple<bool, int, int, int, int, int, int, int>,
+  static CodeCache<std::tuple<bool, int, int, int, int, int, int, int>,
                    jit_micro_kernel_fp>
       codeCache_; ///< JIT Code Cache for reuse.
 };
 
-//template <typename TA, typename TB, typename TC, typename accT>
-//std::mutex CodeGenBase<TA, TB, TC, accT>::rtMutex_;
+template <typename TA, typename TB, typename TC, typename accT>
+std::mutex CodeGenBase<TA, TB, TC, accT>::rtMutex_;
 
 template <typename TA, typename TB, typename TC, typename accT>
-thread_local CodeCache<std::tuple<bool, int, int, int, int, int, int, int>,
+CodeCache<std::tuple<bool, int, int, int, int, int, int, int>,
           typename CodeGenBase<TA, TB, TC, accT>::jit_micro_kernel_fp>
     CodeGenBase<TA, TB, TC, accT>::codeCache_;
 

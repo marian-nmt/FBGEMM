@@ -415,7 +415,7 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<
     jit_micro_kernel_fp fn;
     asmjit::Error err;
     {
-      //std::unique_lock<std::mutex> lock(rtMutex_);
+      std::unique_lock<std::mutex> lock(rtMutex_);
       err = runtime().add(&fn, &code);
     }
     if (err) {

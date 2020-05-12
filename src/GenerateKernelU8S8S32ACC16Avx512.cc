@@ -410,7 +410,7 @@ CodeGenBase<uint8_t, int8_t, int32_t, int16_t>::getOrCreate<inst_set_t::avx512>(
     jit_micro_kernel_fp fn;
     asmjit::Error err;
     {
-      //std::unique_lock<std::mutex> lock(rtMutex_);
+      std::unique_lock<std::mutex> lock(rtMutex_);
       err = runtime().add(&fn, &code);
     }
     if (err) {
