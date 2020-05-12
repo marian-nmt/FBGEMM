@@ -160,7 +160,7 @@ class CodeGenBase {
   int VLEN_; ///< Vector width in elements.
 
   static asmjit::JitRuntime &runtime() {
-    static asmjit::JitRuntime rt; //< JIT Runtime for asmjit,
+    static thread_local asmjit::JitRuntime rt; //< JIT Runtime for asmjit,
                                   // depents on other static
                                   // variables.  Required to prevent
                                   // initialization order fiasco
