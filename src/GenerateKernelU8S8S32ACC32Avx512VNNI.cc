@@ -129,7 +129,7 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<
     int32_t nc,
     int32_t kc,
     int32_t /* unused */) {
-  std::tuple<bool, int, int, int, int, int, int, int> kernelSig;
+  //std::tuple<bool, int, int, int, int, int, int, int> kernelSig;
   int kBlock;
   int nBlock;
   int mRegBlockSize;
@@ -157,17 +157,25 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<
         ROW_INTERLEAVE;
   }
 
-  kernelSig = std::make_tuple(
-      accum,
-      mc,
-      nc,
-      nBlock,
-      kBlock,
-      mRegBlockSize,
-      nRegBlockSize,
-      nRegBlockSizeMin);
+  //kernelSig = std::make_tuple(
+  //    accum,
+  //    mc,
+  //    nc,
+  //    nBlock,
+  //    kBlock,
+  //    mRegBlockSize,
+  //    nRegBlockSize,
+  //    nRegBlockSizeMin);
+  size_t hashVal = hash<bool>()(accum);
+  hash_combine(hashVal, mc);
+  hash_combine(hashVal, nc);
+  hash_combine(hashVal, nBlock);
+  hash_combine(hashVal, kBlock);
+  hash_combine(hashVal, mRegBlockSize);
+  hash_combine(hashVal, nRegBlockSize);
+  hash_combine(hashVal, nRegBlockSizeMin);
 
-  return codeCache_.getOrCreate(kernelSig, [&]() -> jit_micro_kernel_fp {
+  return codeCache_.getOrCreate(hashVal, [&]() -> jit_micro_kernel_fp {
     asmjit::CodeHolder code;
     code.init(runtime().codeInfo());
     x86::Assembler assembler(&code);

@@ -170,7 +170,7 @@ class CodeGenBase {
   static std::mutex rtMutex_;    ///< Controll access to runtime;
 
   // The hash depends on accumulate, mc, nc, ncb, kcb, nr, mr, nr_min
-  static CodeCache<std::tuple<bool, int, int, int, int, int, int, int>,
+  static CodeCache<size_t, //std::tuple<bool, int, int, int, int, int, int, int>,
                    jit_micro_kernel_fp>
       codeCache_; ///< JIT Code Cache for reuse.
 };
@@ -179,7 +179,7 @@ template <typename TA, typename TB, typename TC, typename accT>
 std::mutex CodeGenBase<TA, TB, TC, accT>::rtMutex_;
 
 template <typename TA, typename TB, typename TC, typename accT>
-CodeCache<std::tuple<bool, int, int, int, int, int, int, int>,
+CodeCache<size_t, //std::tuple<bool, int, int, int, int, int, int, int>,
           typename CodeGenBase<TA, TB, TC, accT>::jit_micro_kernel_fp>
     CodeGenBase<TA, TB, TC, accT>::codeCache_;
 
