@@ -60,20 +60,15 @@ void calculateRowOffsets(
 }
 
 template <int SPATIAL_DIM = 2>
-size_t/*tuple<bool, int, int, int>*/ getKernelSig(
+tuple<bool, int, int, int> getKernelSig(
     const conv_param_t<SPATIAL_DIM>& conv_param,
     bool isAZeroPointZero) {
   int C_per_G = conv_param.IC / conv_param.G;
   int K_per_G = conv_param.OC / conv_param.G;
-  //auto kernelSig =
-  //    std::make_tuple(isAZeroPointZero, conv_param.G, C_per_G, K_per_G);
+  auto kernelSig =
+      std::make_tuple(isAZeroPointZero, conv_param.G, C_per_G, K_per_G);
 
-  size_t hashVal = hash<bool>()(isAZeroPointZero);
-  hash_combine(hashVal, conv_param.G);
-  hash_combine(hashVal, C_per_G);
-  hash_combine(hashVal, K_per_G);
-
-  return hashVal;
+  return kernelSig;
 }
 
 template <int SPATIAL_DIM = 2, typename accT = int32_t>

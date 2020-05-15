@@ -159,28 +159,12 @@ class CodeGenBase {
   int vectorWidth_; ///< Vector width in bits.
   int VLEN_; ///< Vector width in elements.
 
-  static asmjit::JitRuntime &runtime() {
-    static asmjit::JitRuntime rt; //< JIT Runtime for asmjit,
-                                  // depents on other static
-                                  // variables.  Required to prevent
-                                  // initialization order fiasco
-    return rt;
+  asmjit::JitRuntime &runtime() {
+    return codeCache_.second;
   }
 
-  static std::mutex rtMutex_;    ///< Controll access to runtime;
-
-  // The hash depends on accumulate, mc, nc, ncb, kcb, nr, mr, nr_min
-  static CodeCache<size_t, //std::tuple<bool, int, int, int, int, int, int, int>,
-                   jit_micro_kernel_fp>
-      codeCache_; ///< JIT Code Cache for reuse.
+  std::pair<CodeCache<std::tuple<bool, int, int, int, int, int, int, int>,
+    jit_micro_kernel_fp>, asmjit::JitRuntime> codeCache_;
 };
-
-template <typename TA, typename TB, typename TC, typename accT>
-std::mutex CodeGenBase<TA, TB, TC, accT>::rtMutex_;
-
-template <typename TA, typename TB, typename TC, typename accT>
-CodeCache<size_t, //std::tuple<bool, int, int, int, int, int, int, int>,
-          typename CodeGenBase<TA, TB, TC, accT>::jit_micro_kernel_fp>
-    CodeGenBase<TA, TB, TC, accT>::codeCache_;
 
 } // namespace fbgemm
