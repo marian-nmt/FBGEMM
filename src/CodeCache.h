@@ -30,6 +30,7 @@ class CodeCache {
     if (it != values_.end()) {
       return it->second;
     } else {
+      //std::cerr << "create" << std::endl;
       auto fn = generatorFunction();
       values_[key] = fn;
       return fn;

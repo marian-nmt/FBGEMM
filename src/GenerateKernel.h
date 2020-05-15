@@ -159,12 +159,18 @@ class CodeGenBase {
   int vectorWidth_; ///< Vector width in bits.
   int VLEN_; ///< Vector width in elements.
 
-  asmjit::JitRuntime &runtime() {
-    return codeCache_.second;
+  static std::pair<CodeCache<std::tuple<bool, int, int, int, int, int, int, int>,
+    jit_micro_kernel_fp>, asmjit::JitRuntime> &runtime() {
+    static thread_local std::pair<CodeCache<std::tuple<bool, int, int, int, int, int, int, int>,
+      jit_micro_kernel_fp>, asmjit::JitRuntime> codeCache_;
+    return codeCache_;
   }
 
-  std::pair<CodeCache<std::tuple<bool, int, int, int, int, int, int, int>,
-    jit_micro_kernel_fp>, asmjit::JitRuntime> codeCache_;
 };
+
+//template <typename TA, typename TB, typename TC, typename accT>
+//thread_local std::pair<CodeCache<std::tuple<bool, int, int, int, int, int, int, int>,
+//  typename CodeGenBase<TA, TB, TC, accT>::jit_micro_kernel_fp>, asmjit::JitRuntime> 
+//  CodeGenBase<TA, TB, TC, accT>::codeCache_;
 
 } // namespace fbgemm

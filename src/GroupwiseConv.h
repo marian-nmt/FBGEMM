@@ -230,9 +230,9 @@ class GenConvKernel {
 
   static std::mutex rtMutex_; ///< Controll access to runtime;
 
-  static CodeCache<size_t /*std::tuple<bool, int, int, int>*/, jit_conv_kernel_fp>
+  static CodeCache<std::tuple<bool, int, int, int>, jit_conv_kernel_fp>
       codeCache_; ///< JIT Code Cache for reuse.
-  static CodeCache<size_t /*std::tuple<bool, int, int, int>*/, jit_rowoffset_kernel_fp>
+  static CodeCache<std::tuple<bool, int, int, int>, jit_rowoffset_kernel_fp>
       codeCacheRowOffset_; ///< JIT Code Cache for row offset kernel.
 
 private:
@@ -285,11 +285,11 @@ template <int SPATIAL_DIM, typename accT>
 std::mutex GenConvKernel<SPATIAL_DIM, accT>::rtMutex_;
 
 template <int SPATIAL_DIM, typename accT>
-CodeCache<size_t /*std::tuple<bool, int, int, int>*/, jit_conv_kernel_fp>
+CodeCache<std::tuple<bool, int, int, int>, jit_conv_kernel_fp>
     GenConvKernel<SPATIAL_DIM, accT>::codeCache_;
 
 template <int SPATIAL_DIM, typename accT>
-CodeCache<size_t /*std::tuple<bool, int, int, int>*/, jit_rowoffset_kernel_fp>
+CodeCache<std::tuple<bool, int, int, int>, jit_rowoffset_kernel_fp>
     GenConvKernel<SPATIAL_DIM, accT>::codeCacheRowOffset_;
 
 } // namespace fbgemm

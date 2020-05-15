@@ -173,9 +173,9 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx2>(
       nRegBlockSize,
       nRegBlockSizeMin);
 
-  return codeCache_.first.getOrCreate(kernelSig, [&]() -> jit_micro_kernel_fp {
+  return runtime().first.getOrCreate(kernelSig, [&]() -> jit_micro_kernel_fp {
     asmjit::CodeHolder code;
-    code.init(runtime().codeInfo());
+    code.init(runtime().second.codeInfo());
     x86::Assembler assembler(&code);
     x86::Emitter *a = assembler.as<x86::Emitter>();
 #if defined(FBGEMM_LOG_CODE)
@@ -331,10 +331,10 @@ CodeGenBase<uint8_t, int8_t, int32_t, int32_t>::getOrCreate<inst_set_t::avx2>(
     asmjit::Error err;
     {
       //std::unique_lock<std::mutex> lock(rtMutex_);
-      err = runtime().add(&fn, &code);
+      err = runtime().second.add(&fn, &code);
     }
     if (err) {
-      std::cout << "Error: in fn add" << std::endl;
+      //std::cout << "Error: in fn add" << std::endl;
       return nullptr;
     }
 
