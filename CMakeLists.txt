@@ -126,7 +126,7 @@ set_target_properties(fbgemm_generic fbgemm_avx2 fbgemm_avx512 PROPERTIES
 if (NOT MSVC)
   # '-march=native' makes avx2 assembly generation fail on AVX512 CPUs with gcc 9.3+
   if (CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.2)
-    message(WARNING "When built with gcc 9.3+, '-march=native' is disabled.")
+    message(WARNING "When built with gcc 9.3+, '-march=native' should be disabled.")
     target_compile_options(fbgemm_avx2 PRIVATE
       "-m64" "-mavx2" "-mfma" "-masm=intel" "-mf16c" "-march=x86-64")
   else()
